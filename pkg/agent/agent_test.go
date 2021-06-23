@@ -174,84 +174,93 @@ func TestInitNodeLocalConfig(t *testing.T) {
 		ipNet: transportIPNet,
 	}
 	tests := []struct {
-		name                   string
-		trafficEncapMode       config.TrafficEncapModeType
-		transportInterface     *testTransInterface
-		tunnelType             ovsconfig.TunnelType
-		mtu                    int
-		expectedMTU            int
-		expectedNodeAnnotation map[string]string
+		name                      string
+		trafficEncapMode          config.TrafficEncapModeType
+		transportInterface        *testTransInterface
+		tunnelType                ovsconfig.TunnelType
+		mtu                       int
+		expectedMTU               int
+		expectedNodeLocalIfaceMTU int
+		expectedNodeAnnotation    map[string]string
 	}{
 		{
-			name:                   "noencap mode",
-			trafficEncapMode:       config.TrafficEncapModeNoEncap,
-			mtu:                    0,
-			expectedMTU:            1500,
-			expectedNodeAnnotation: map[string]string{types.NodeMACAddressAnnotationKey: macAddr.String()},
+			name:                      "noencap mode",
+			trafficEncapMode:          config.TrafficEncapModeNoEncap,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1500,
+			expectedNodeAnnotation:    map[string]string{types.NodeMACAddressAnnotationKey: macAddr.String()},
 		},
 		{
-			name:                   "hybrid mode",
-			trafficEncapMode:       config.TrafficEncapModeHybrid,
-			mtu:                    0,
-			expectedMTU:            1500,
-			expectedNodeAnnotation: map[string]string{types.NodeMACAddressAnnotationKey: macAddr.String()},
+			name:                      "hybrid mode",
+			trafficEncapMode:          config.TrafficEncapModeHybrid,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1500,
+			expectedNodeAnnotation:    map[string]string{types.NodeMACAddressAnnotationKey: macAddr.String()},
 		},
 		{
-			name:                   "encap mode, geneve tunnel",
-			trafficEncapMode:       config.TrafficEncapModeEncap,
-			tunnelType:             ovsconfig.GeneveTunnel,
-			mtu:                    0,
-			expectedMTU:            1450,
-			expectedNodeAnnotation: nil,
+			name:                      "encap mode, geneve tunnel",
+			trafficEncapMode:          config.TrafficEncapModeEncap,
+			tunnelType:                ovsconfig.GeneveTunnel,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1450,
+			expectedNodeAnnotation:    nil,
 		},
 		{
-			name:                   "encap mode, mtu specified",
-			trafficEncapMode:       config.TrafficEncapModeEncap,
-			tunnelType:             ovsconfig.GeneveTunnel,
-			mtu:                    1400,
-			expectedMTU:            1400,
-			expectedNodeAnnotation: nil,
+			name:                      "encap mode, mtu specified",
+			trafficEncapMode:          config.TrafficEncapModeEncap,
+			tunnelType:                ovsconfig.GeneveTunnel,
+			mtu:                       1400,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1400,
+			expectedNodeAnnotation:    nil,
 		},
 		{
-			name:               "noencap mode with transportInterface",
-			trafficEncapMode:   config.TrafficEncapModeNoEncap,
-			transportInterface: testTransportIface,
-			mtu:                0,
-			expectedMTU:        1500,
+			name:                      "noencap mode with transportInterface",
+			trafficEncapMode:          config.TrafficEncapModeNoEncap,
+			transportInterface:        testTransportIface,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1500,
 			expectedNodeAnnotation: map[string]string{
 				types.NodeMACAddressAnnotationKey:       transportIfaceMAC.String(),
 				types.NodeTransportAddressAnnotationKey: transportIP.String(),
 			},
 		},
 		{
-			name:               "hybrid mode with transportInterface",
-			trafficEncapMode:   config.TrafficEncapModeHybrid,
-			transportInterface: testTransportIface,
-			mtu:                0,
-			expectedMTU:        1500,
+			name:                      "hybrid mode with transportInterface",
+			trafficEncapMode:          config.TrafficEncapModeHybrid,
+			transportInterface:        testTransportIface,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1500,
 			expectedNodeAnnotation: map[string]string{
 				types.NodeMACAddressAnnotationKey:       transportIfaceMAC.String(),
 				types.NodeTransportAddressAnnotationKey: transportIP.String(),
 			},
 		},
 		{
-			name:               "encap mode with transportInterface, geneve tunnel",
-			trafficEncapMode:   config.TrafficEncapModeEncap,
-			transportInterface: testTransportIface,
-			tunnelType:         ovsconfig.GeneveTunnel,
-			mtu:                0,
-			expectedMTU:        1450,
+			name:                      "encap mode with transportInterface, geneve tunnel",
+			trafficEncapMode:          config.TrafficEncapModeEncap,
+			transportInterface:        testTransportIface,
+			tunnelType:                ovsconfig.GeneveTunnel,
+			mtu:                       0,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1450,
 			expectedNodeAnnotation: map[string]string{
 				types.NodeTransportAddressAnnotationKey: transportIP.String(),
 			},
 		},
 		{
-			name:               "encap mode with transportInterface, mtu specified",
-			trafficEncapMode:   config.TrafficEncapModeEncap,
-			transportInterface: testTransportIface,
-			tunnelType:         ovsconfig.GeneveTunnel,
-			mtu:                1400,
-			expectedMTU:        1400,
+			name:                      "encap mode with transportInterface, mtu specified",
+			trafficEncapMode:          config.TrafficEncapModeEncap,
+			transportInterface:        testTransportIface,
+			tunnelType:                ovsconfig.GeneveTunnel,
+			mtu:                       1400,
+			expectedNodeLocalIfaceMTU: 1500,
+			expectedMTU:               1400,
 			expectedNodeAnnotation: map[string]string{
 				types.NodeTransportAddressAnnotationKey: transportIP.String(),
 			},
@@ -278,14 +287,15 @@ func TestInitNodeLocalConfig(t *testing.T) {
 			client := fake.NewSimpleClientset(node)
 			ifaceStore := interfacestore.NewInterfaceStore()
 			expectedNodeConfig := config.NodeConfig{
-				Name:                nodeName,
-				OVSBridge:           ovsBridge,
-				DefaultTunName:      defaultTunInterfaceName,
-				PodIPv4CIDR:         podCIDR,
-				NodeIPAddr:          nodeIPNet,
-				NodeTransportIPAddr: nodeIPNet,
-				NodeMTU:             tt.expectedMTU,
-				UplinkNetConfig:     new(config.AdapterNetConfig),
+				Name:                  nodeName,
+				OVSBridge:             ovsBridge,
+				DefaultTunName:        defaultTunInterfaceName,
+				PodIPv4CIDR:           podCIDR,
+				NodeIPAddr:            nodeIPNet,
+				NodeTransportIPAddr:   nodeIPNet,
+				NodeLocalInterfaceMTU: tt.expectedNodeLocalIfaceMTU,
+				NodeMTU:               tt.expectedMTU,
+				UplinkNetConfig:       new(config.AdapterNetConfig),
 			}
 
 			initializer := &Initializer{

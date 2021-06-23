@@ -41,15 +41,16 @@ require (
 	github.com/streamrail/concurrent-map v0.0.0-20160823150647-8bf1e9bacbf6 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/ti-mo/conntrack v0.3.0
-	github.com/vishvananda/netlink v1.1.0
+	github.com/vishvananda/netlink v1.1.1-0.20210510164352-d17758a128bf
 	github.com/vmware/go-ipfix v0.5.7
-	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/crypto v0.0.0-20210503195802-e9a32991a82e
 	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6
 	golang.org/x/mod v0.4.2
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
+	golang.org/x/net v0.0.0-20210504132125-bbd867fde50d
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20210506160403-92e472f520a5
 	google.golang.org/grpc v1.27.1
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v2 v2.4.0

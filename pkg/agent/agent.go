@@ -41,6 +41,7 @@ import (
 	"antrea.io/antrea/pkg/agent/route"
 	"antrea.io/antrea/pkg/agent/types"
 	"antrea.io/antrea/pkg/agent/util"
+	"antrea.io/antrea/pkg/agent/wireguard"
 	"antrea.io/antrea/pkg/features"
 	"antrea.io/antrea/pkg/ovs/ovsconfig"
 	"antrea.io/antrea/pkg/ovs/ovsctl"
@@ -71,6 +72,7 @@ type Initializer struct {
 	ovsBridgeClient ovsconfig.OVSBridgeClient
 	ofClient        openflow.Client
 	routeClient     route.Interface
+	wireGuardClient wireguard.Interface
 	ifaceStore      interfacestore.InterfaceStore
 	ovsBridge       string
 	hostGateway     string // name of gateway port on the OVS bridge
@@ -122,6 +124,11 @@ func NewInitializer(
 // GetNodeConfig returns the NodeConfig.
 func (i *Initializer) GetNodeConfig() *config.NodeConfig {
 	return i.nodeConfig
+}
+
+// GetNodeConfig returns the NodeConfig.
+func (i *Initializer) GetWireGuardClient() wireguard.Interface {
+	return i.wireGuardClient
 }
 
 // setupOVSBridge sets up the OVS bridge and create host gateway interface and tunnel port
@@ -262,6 +269,10 @@ func (i *Initializer) Initialize() error {
 		return err
 	}
 
+	if err := i.initializeWireGuard(); err != nil {
+		return err
+	}
+
 	if err := i.prepareHostNetwork(); err != nil {
 		return err
 	}
@@ -336,7 +347,7 @@ func (i *Initializer) initOpenFlowPipeline() error {
 	roundInfo := getRoundInfo(i.ovsBridgeClient)
 
 	// Set up all basic flows.
-	ofConnCh, err := i.ofClient.Initialize(roundInfo, i.nodeConfig, i.networkConfig.TrafficEncapMode)
+	ofConnCh, err := i.ofClient.Initialize(roundInfo, i.nodeConfig, i.networkConfig)
 	if err != nil {
 		klog.Errorf("Failed to initialize openflow client: %v", err)
 		return err
@@ -720,12 +731,14 @@ func (i *Initializer) initNodeLocalConfig() error {
 	}
 
 	i.nodeConfig = &config.NodeConfig{
-		Name:                nodeName,
-		OVSBridge:           i.ovsBridge,
-		DefaultTunName:      defaultTunInterfaceName,
-		NodeIPAddr:          nodeIPAddr,
-		NodeTransportIPAddr: transportIPAddr,
-		UplinkNetConfig:     new(config.AdapterNetConfig)}
+		Name:                  nodeName,
+		OVSBridge:             i.ovsBridge,
+		DefaultTunName:        defaultTunInterfaceName,
+		NodeIPAddr:            nodeIPAddr,
+		NodeTransportIPAddr:   transportIPAddr,
+		UplinkNetConfig:       new(config.AdapterNetConfig),
+		NodeLocalInterfaceMTU: localIntf.MTU,
+	}
 
 	mtu, err := i.getNodeMTU(localIntf)
 	if err != nil {
@@ -785,7 +798,7 @@ func (i *Initializer) initNodeLocalConfig() error {
 
 // initializeIPSec checks if preconditions are met for using IPsec and reads the IPsec PSK value.
 func (i *Initializer) initializeIPSec() error {
-	if !i.networkConfig.EnableIPSecTunnel {
+	if i.networkConfig.TrafficEncryptionMode != config.TrafficEncryptionModeIPSec {
 		return nil
 	}
 
@@ -816,6 +829,34 @@ func (i *Initializer) initializeIPSec() error {
 		return err
 	}
 	return nil
+}
+
+// initializeWireguard checks if preconditions are met for using WireGuard and initialize WireGuard client or clean up.
+func (i *Initializer) initializeWireGuard() error {
+
+	mtu := i.nodeConfig.NodeLocalInterfaceMTU - config.WireGuardOverhead
+	// create and initialize WireGuard client
+	v4Enabled := config.IsIPv4Enabled(i.nodeConfig, i.networkConfig.TrafficEncapMode)
+	v6Enabled := config.IsIPv6Enabled(i.nodeConfig, i.networkConfig.TrafficEncapMode)
+
+	var nodeIPv4, nodeIPv6 net.IP
+	nodeIPv4 = i.nodeConfig.NodeIPAddr.IP.To4()
+
+	if nodeIPv4 == nil {
+		nodeIPv6 = i.nodeConfig.NodeIPAddr.IP.To16()
+	}
+
+	wgClient, err := wireguard.New(i.nodeConfig.Name, i.client, mtu, nodeIPv4, nodeIPv6,
+		v4Enabled, v6Enabled, i.networkConfig.WireGuardPort)
+	if err != nil {
+		return err
+	}
+	i.wireGuardClient = wgClient
+	// clean up routes
+	if i.networkConfig.TrafficEncryptionMode != config.TrafficEncryptionModeWireGuard {
+		return i.wireGuardClient.Cleanup()
+	}
+	return i.wireGuardClient.Init()
 }
 
 // readIPSecPSK reads the IPsec PSK value from environment variable ANTREA_IPSEC_PSK
@@ -898,11 +939,15 @@ func (i *Initializer) getNodeMTU(localIntf *net.Interface) (int, error) {
 		} else if i.networkConfig.TunnelType == ovsconfig.GRETunnel {
 			mtu -= config.GREOverhead
 		}
+
 		if i.nodeConfig.NodeIPAddr.IP.To4() == nil {
 			mtu -= config.IPv6ExtraOverhead
 		}
 	}
-	if i.networkConfig.EnableIPSecTunnel {
+	if i.networkConfig.TrafficEncryptionMode == config.TrafficEncryptionModeWireGuard {
+		mtu -= config.WireGuardOverhead
+	}
+	if i.networkConfig.TrafficEncryptionMode == config.TrafficEncryptionModeIPSec {
 		mtu -= config.IPSecESPOverhead
 	}
 	return mtu, nil

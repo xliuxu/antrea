@@ -33,5 +33,8 @@ install -m 755 /opt/cni/bin/whereabouts /host/opt/cni/bin/whereabouts
 # Load the OVS kernel module
 modprobe openvswitch || (echo "Failed to load the OVS kernel module from the container, try running 'modprobe openvswitch' on your Nodes"; exit 1)
 
+# Load the WireGuard kernel module
+modprobe wireguard || (echo echo "Failed to load the WireGuard kernel module, WireGuard encryption will not be available")
+
 # Change the default permissions of the run directory.
 chmod 0750 /var/run/antrea

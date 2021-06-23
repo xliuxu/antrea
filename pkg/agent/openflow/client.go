@@ -39,7 +39,7 @@ type Client interface {
 	// be called to ensure that the set of OVS flows is correct. All flows programmed in the
 	// switch which match the current round number will be deleted before any new flow is
 	// installed.
-	Initialize(roundInfo types.RoundInfo, config *config.NodeConfig, encapMode config.TrafficEncapModeType) (<-chan struct{}, error)
+	Initialize(roundInfo types.RoundInfo, config *config.NodeConfig, networkconfig *config.NetworkConfig) (<-chan struct{}, error)
 
 	// InstallGatewayFlows sets up flows related to an OVS gateway port, the gateway must exist.
 	InstallGatewayFlows() error
@@ -408,10 +408,14 @@ func (c *client) InstallNodeFlows(hostname string,
 			// only work for IPv4 addresses.
 			flows = append(flows, c.arpResponderFlow(peerGatewayIP, cookie.Node))
 		}
-		if c.encapMode.NeedsEncapToPeer(tunnelPeerIP, c.nodeConfig.NodeTransportIPAddr) {
+		if c.networkConfig.TrafficEncapMode.NeedsEncapToPeer(tunnelPeerIP, c.nodeConfig.NodeTransportIPAddr) {
 			// tunnelPeerIP is the Node Internal Address. In a dual-stack setup, whether this address is an IPv4 address or an
 			// IPv6 one is decided by the address family of Node Internal Address.
-			flows = append(flows, c.l3FwdFlowToRemote(localGatewayMAC, *peerPodCIDR, tunnelPeerIP, cookie.Node))
+			if c.networkConfig.TrafficEncryptionMode == config.TrafficEncryptionModeWireGuard {
+				flows = append(flows, c.l3FwdFlowToRemoteViaWireguard(localGatewayMAC, *peerPodCIDR, tunnelPeerIP, cookie.Node))
+			} else {
+				flows = append(flows, c.l3FwdFlowToRemote(localGatewayMAC, *peerPodCIDR, tunnelPeerIP, cookie.Node))
+			}
 		} else {
 			flows = append(flows, c.l3FwdFlowToRemoteViaRouting(localGatewayMAC, remoteGatewayMAC, cookie.Node, tunnelPeerIP, peerPodCIDR)...)
 		}
@@ -455,7 +459,7 @@ func (c *client) InstallPodFlows(interfaceName string, podInterfaceIPs []net.IP,
 	// Add L3 Routing flows to rewrite Pod's dst MAC for all validate IPs.
 	flows = append(flows, c.l3FwdFlowToPod(localGatewayMAC, podInterfaceIPs, podInterfaceMAC, cookie.Pod)...)
 
-	if c.encapMode.IsNetworkPolicyOnly() {
+	if c.networkConfig.TrafficEncapMode.IsNetworkPolicyOnly() {
 		// In policy-only mode, traffic to local Pod is routed based on destination IP.
 		flows = append(flows,
 			c.l3FwdFlowRouteToPod(podInterfaceIPs, podInterfaceMAC, cookie.Pod)...,
@@ -681,7 +685,7 @@ func (c *client) initialize() error {
 	if err := c.ofEntryOperations.AddAll(c.establishedConnectionFlows(cookie.Default)); err != nil {
 		return fmt.Errorf("failed to install flows to skip established connections: %v", err)
 	}
-	if c.encapMode.IsNetworkPolicyOnly() {
+	if c.networkConfig.TrafficEncapMode.IsNetworkPolicyOnly() {
 		if err := c.setupPolicyOnlyFlows(); err != nil {
 			return fmt.Errorf("failed to setup policy only flows: %w", err)
 		}
@@ -697,14 +701,14 @@ func (c *client) initialize() error {
 	return nil
 }
 
-func (c *client) Initialize(roundInfo types.RoundInfo, nodeConfig *config.NodeConfig, encapMode config.TrafficEncapModeType) (<-chan struct{}, error) {
+func (c *client) Initialize(roundInfo types.RoundInfo, nodeConfig *config.NodeConfig, networkConfig *config.NetworkConfig) (<-chan struct{}, error) {
 	c.nodeConfig = nodeConfig
-	c.encapMode = encapMode
+	c.networkConfig = networkConfig
 
-	if config.IsIPv4Enabled(nodeConfig, encapMode) {
+	if config.IsIPv4Enabled(nodeConfig, c.networkConfig.TrafficEncapMode) {
 		c.ipProtocols = append(c.ipProtocols, binding.ProtocolIP)
 	}
-	if config.IsIPv6Enabled(nodeConfig, encapMode) {
+	if config.IsIPv6Enabled(nodeConfig, c.networkConfig.TrafficEncapMode) {
 		c.ipProtocols = append(c.ipProtocols, binding.ProtocolIPv6)
 	}
 
@@ -963,11 +967,11 @@ func (c *client) InitialTLVMap() error {
 }
 
 func (c *client) IsIPv4Enabled() bool {
-	return config.IsIPv4Enabled(c.nodeConfig, c.encapMode)
+	return config.IsIPv4Enabled(c.nodeConfig, c.networkConfig.TrafficEncapMode)
 }
 
 func (c *client) IsIPv6Enabled() bool {
-	return config.IsIPv6Enabled(c.nodeConfig, c.encapMode)
+	return config.IsIPv6Enabled(c.nodeConfig, c.networkConfig.TrafficEncapMode)
 }
 
 // setBasePacketOutBuilder sets base IP properties of a packetOutBuilder which can have more packet data added.

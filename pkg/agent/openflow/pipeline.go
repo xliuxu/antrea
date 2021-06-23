@@ -257,6 +257,8 @@ const (
 	macRewriteMark = 0b1
 	// cnpDenyMark indicates the packet is denied(Drop/Reject).
 	cnpDenyMark = 0b1
+	//wireGuardPktMark indicates the packet should be routed through WireGuard tunnel
+	wireGuardPktMark = 0b1
 
 	// gatewayCTMark is used to to mark connections initiated through the host gateway interface
 	// (i.e. for which the first packet of the connection was received through the gateway).
@@ -350,6 +352,10 @@ var (
 	// a SNAT IP. The bit range must match SNATIPMarkMask.
 	snatPktMarkRange = binding.Range{0, 7}
 
+	// wireGuardPktMarkRange take one byte to indicate the packet needs to be routed through
+	// the WireGuard tunnel
+	wireGuardPktMarkRange = binding.Range{8, 8}
+
 	globalVirtualMAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:ff")
 	hairpinIP           = net.ParseIP("169.254.169.252").To4()
 	hairpinIPv6         = net.ParseIP("fc00::aabb:ccdd:eeff").To16()
@@ -386,6 +392,7 @@ type client struct {
 	enableAntreaPolicy bool
 	enableDenyTracking bool
 	enableEgress       bool
+	enableWireGuard    bool
 	roundInfo          types.RoundInfo
 	cookieAllocator    cookie.Allocator
 	bridge             binding.Bridge
@@ -411,7 +418,7 @@ type client struct {
 	// replayMutex provides exclusive access to the OFSwitch to the ReplayFlows method.
 	replayMutex   sync.RWMutex
 	nodeConfig    *config.NodeConfig
-	encapMode     config.TrafficEncapModeType
+	networkConfig *config.NetworkConfig
 	gatewayOFPort uint32
 	// ovsDatapathType is the type of the datapath used by the bridge.
 	ovsDatapathType ovsconfig.OVSDatapathType
@@ -939,7 +946,7 @@ func (c *client) traceflowL2ForwardOutputFlows(dataplaneTag uint8, liveTraffic, 
 	flows := []binding.Flow{}
 	l2FwdOutTable := c.pipeline[L2ForwardingOutTable]
 	for _, ipProtocol := range c.ipProtocols {
-		if c.encapMode.SupportsEncap() {
+		if c.networkConfig.TrafficEncapMode.SupportsEncap() {
 			// SendToController and Output if output port is tunnel port.
 			fb1 := l2FwdOutTable.BuildFlow(priorityNormal+3).
 				MatchReg(int(PortCacheReg), config.DefaultTunOFPort).
@@ -1204,6 +1211,27 @@ func (c *client) l3FwdFlowToRemote(
 		// Rewrite src MAC to local gateway MAC and rewrite dst MAC to virtual MAC.
 		Action().SetSrcMAC(localGatewayMAC).
 		Action().SetDstMAC(globalVirtualMAC).
+		// Flow based tunnel. Set tunnel destination.
+		Action().SetTunnelDst(tunnelPeer).
+		Action().GotoTable(l3DecTTLTable).
+		Cookie(c.cookieAllocator.Request(category).Raw()).
+		Done()
+}
+
+// l3FwdFlowToRemoteViaWireguard generates the L3 forward flow for traffic to a remote Node
+// (Pods or gateway) through the tunnel.
+func (c *client) l3FwdFlowToRemoteViaWireguard(
+	localGatewayMAC net.HardwareAddr,
+	peerSubnet net.IPNet,
+	tunnelPeer net.IP,
+	category cookie.Category) binding.Flow {
+	ipProto := getIPProtocol(peerSubnet.IP)
+	return c.pipeline[l3ForwardingTable].BuildFlow(priorityNormal).MatchProtocol(ipProto).
+		MatchDstIPNet(peerSubnet).
+		// Rewrite src MAC to local gateway MAC and rewrite dst MAC to virtual MAC.
+		Action().SetSrcMAC(localGatewayMAC).
+		Action().SetDstMAC(globalVirtualMAC).
+		Action().LoadPktMarkRange(wireGuardPktMark, wireGuardPktMarkRange).
 		// Flow based tunnel. Set tunnel destination.
 		Action().SetTunnelDst(tunnelPeer).
 		Action().GotoTable(l3DecTTLTable).

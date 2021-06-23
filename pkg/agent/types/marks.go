@@ -27,4 +27,11 @@ var (
 	// SNATIPMarkMask is the bits of packet mark that stores the ID of the
 	// SNAT IP for a "Pod -> external" egress packet, that is to be SNAT'd.
 	SNATIPMarkMask = uint32(0xFF)
+
+	// WireGuardRouteMark is the bit of packet mark that indicates packet needs to be routed
+	// through the WireGuard tunnel
+	WireGuardRouteMark = 0x100
+
+	// WireGuardRouteMask is the mask to extract the bit of WireGuardRouteMark
+	WireGuardRouteMask = 0x100
 )

@@ -260,7 +260,7 @@ if $KIND; then
 fi
 
 if $IPSEC; then
-    sed -i.bak -E "s/^[[:space:]]*#[[:space:]]*enableIPSecTunnel[[:space:]]*:[[:space:]]*[a-z]+[[:space:]]*$/enableIPSecTunnel: true/" antrea-agent.conf
+    sed -i.bak -E "s/^[[:space:]]*#[[:space:]]*trafficEncryptionMode[[:space:]]*:[[:space:]]*[a-z]+[[:space:]]*$/trafficEncryptionMode: ipsec/" antrea-agent.conf
     # change the tunnel type to GRE which works better with IPSec encryption than other types.
     sed -i.bak -E "s/^[[:space:]]*#[[:space:]]*tunnelType[[:space:]]*:[[:space:]]*[a-z]+[[:space:]]*$/tunnelType: gre/" antrea-agent.conf
 fi

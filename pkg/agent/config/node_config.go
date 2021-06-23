@@ -34,9 +34,10 @@ const (
 )
 
 const (
-	VXLANOverhead  = 50
-	GeneveOverhead = 50
-	GREOverhead    = 38
+	VXLANOverhead     = 50
+	GeneveOverhead    = 50
+	GREOverhead       = 38
+	WireGuardOverhead = 80
 	// IPsec ESP can add a maximum of 38 bytes to the packet including the ESP
 	// header and trailer.
 	IPSecESPOverhead  = 38
@@ -87,6 +88,8 @@ type NodeConfig struct {
 	NodeIPAddr *net.IPNet
 	// The IP on the Node's transport interface. It is used for tunneling or routing the Pod traffic across Nodes.
 	NodeTransportIPAddr *net.IPNet
+	// The original MTU of Node's local interface which has the IP used in Kubernetes.
+	NodeLocalInterfaceMTU int
 	// Set either via defaultMTU config in antrea.yaml or auto discovered.
 	// Auto discovery will use MTU value of the Node's primary interface.
 	// For Encap and Hybrid mode, Node MTU will be adjusted to account for encap header.
@@ -104,11 +107,12 @@ func (n *NodeConfig) String() string {
 
 // User provided network configuration parameters.
 type NetworkConfig struct {
-	TrafficEncapMode  TrafficEncapModeType
-	TunnelType        ovsconfig.TunnelType
-	EnableIPSecTunnel bool
-	IPSecPSK          string
-	TransportIface    string
+	TrafficEncapMode      TrafficEncapModeType
+	TunnelType            ovsconfig.TunnelType
+	TrafficEncryptionMode TrafficEncryptionModeType
+	WireGuardPort         int
+	IPSecPSK              string
+	TransportIface        string
 }
 
 // IsIPv4Enabled returns true if the cluster network supports IPv4.

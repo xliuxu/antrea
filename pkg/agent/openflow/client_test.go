@@ -48,7 +48,8 @@ var (
 		IPv6: gwIPv6,
 		MAC:  gwMAC,
 	}
-	nodeConfig = &config.NodeConfig{GatewayConfig: gatewayConfig}
+	nodeConfig   = &config.NodeConfig{GatewayConfig: gatewayConfig}
+	networkConig = &config.NetworkConfig{}
 )
 
 func installNodeFlows(ofClient Client, cacheKey string) (int, error) {
@@ -103,6 +104,7 @@ func TestIdempotentFlowInstallation(t *testing.T) {
 			client.cookieAllocator = cookie.NewAllocator(0)
 			client.ofEntryOperations = m
 			client.nodeConfig = nodeConfig
+			client.networkConfig = networkConig
 
 			m.EXPECT().AddAll(gomock.Any()).Return(nil).Times(1)
 			// Installing the flows should succeed, and all the flows should be added into the cache.
@@ -131,6 +133,7 @@ func TestIdempotentFlowInstallation(t *testing.T) {
 			client.cookieAllocator = cookie.NewAllocator(0)
 			client.ofEntryOperations = m
 			client.nodeConfig = nodeConfig
+			client.networkConfig = networkConig
 
 			errorCall := m.EXPECT().AddAll(gomock.Any()).Return(errors.New("Bundle error")).Times(1)
 			m.EXPECT().AddAll(gomock.Any()).Return(nil).After(errorCall)
@@ -172,6 +175,7 @@ func TestFlowInstallationFailed(t *testing.T) {
 			client.cookieAllocator = cookie.NewAllocator(0)
 			client.ofEntryOperations = m
 			client.nodeConfig = nodeConfig
+			client.networkConfig = networkConig
 
 			// We generate an error for AddAll call.
 			m.EXPECT().AddAll(gomock.Any()).Return(errors.New("Bundle error"))
@@ -206,6 +210,7 @@ func TestConcurrentFlowInstallation(t *testing.T) {
 			client.cookieAllocator = cookie.NewAllocator(0)
 			client.ofEntryOperations = m
 			client.nodeConfig = nodeConfig
+			client.networkConfig = networkConig
 
 			var concurrentCalls atomic.Value // set to true if we observe concurrent calls
 			timeoutCh := make(chan struct{})

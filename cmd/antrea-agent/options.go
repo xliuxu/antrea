@@ -116,7 +116,11 @@ func (o *Options) validate(args []string) error {
 		o.config.TunnelType != ovsconfig.GRETunnel && o.config.TunnelType != ovsconfig.STTTunnel {
 		return fmt.Errorf("tunnel type %s is invalid", o.config.TunnelType)
 	}
-	if o.config.EnableIPSecTunnel && o.config.TunnelType != ovsconfig.GRETunnel {
+	ok, encryptionMode := config.GetTrafficEncryptionModeFromStr(o.config.TrafficEncryptionMode)
+	if !ok {
+		return fmt.Errorf("TrafficEncryptionMode %s is unknown", o.config.TrafficEncryptionMode)
+	}
+	if encryptionMode == config.TrafficEncryptionModeIPSec && o.config.TunnelType != ovsconfig.GRETunnel {
 		return fmt.Errorf("IPSec encyption is supported only for GRE tunnel")
 	}
 	if o.config.OVSDatapathType != string(ovsconfig.OVSDatapathSystem) && o.config.OVSDatapathType != string(ovsconfig.OVSDatapathNetdev) {
@@ -137,8 +141,8 @@ func (o *Options) validate(args []string) error {
 		if !features.DefaultFeatureGate.Enabled(features.AntreaProxy) {
 			return fmt.Errorf("TrafficEncapMode %s requires AntreaProxy to be enabled", o.config.TrafficEncapMode)
 		}
-		if o.config.EnableIPSecTunnel {
-			return fmt.Errorf("IPsec tunnel may only be enabled in %s mode", config.TrafficEncapModeEncap)
+		if encryptionMode != config.TrafficEncryptionModeNone {
+			return fmt.Errorf("TrafficEncryptionMode %s may only be enabled in %s mode", encryptionMode, config.TrafficEncapModeEncap)
 		}
 	}
 	if o.config.NoSNAT && !(encapMode == config.TrafficEncapModeNoEncap || encapMode == config.TrafficEncapModeNetworkPolicyOnly) {
@@ -183,6 +187,9 @@ func (o *Options) setDefaults() {
 	if o.config.TrafficEncapMode == "" {
 		o.config.TrafficEncapMode = config.TrafficEncapModeEncap.String()
 	}
+	if o.config.TrafficEncryptionMode == "" {
+		o.config.TrafficEncryptionMode = config.TrafficEncryptionModeNone.String()
+	}
 	if o.config.TunnelType == "" {
 		o.config.TunnelType = defaultTunnelType
 	}
@@ -195,9 +202,11 @@ func (o *Options) setDefaults() {
 	if o.config.APIPort == 0 {
 		o.config.APIPort = apis.AntreaAgentAPIPort
 	}
-
 	if o.config.ClusterMembershipPort == 0 {
 		o.config.ClusterMembershipPort = apis.AntreaAgentClusterMembershipPort
+	}
+	if o.config.WireGuardPort == 0 {
+		o.config.WireGuardPort = apis.WireGuardListenPort
 	}
 
 	if features.DefaultFeatureGate.Enabled(features.FlowExporter) {

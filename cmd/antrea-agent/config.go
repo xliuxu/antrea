@@ -89,12 +89,18 @@ type AgentConfig struct {
 	// --service-cluster-ip-range. When AntreaProxy is enabled, this parameter is not needed.
 	// No default value for this field.
 	ServiceCIDRv6 string `yaml:"serviceCIDRv6,omitempty"`
-	// Whether or not to enable IPSec (ESP) encryption for Pod traffic across Nodes. IPSec encryption
-	// is supported only for the GRE tunnel type. Antrea uses Preshared Key (PSK) for IKE
-	// authentication. When IPSec tunnel is enabled, the PSK value must be passed to Antrea Agent
-	// through an environment variable: ANTREA_IPSEC_PSK.
-	// Defaults to false.
-	EnableIPSecTunnel bool `yaml:"enableIPSecTunnel,omitempty"`
+	// Determines how tunnel traffic is encrypted. Currently encryption only works with antrea encap mode.
+	// It has the following options:
+	// - none (default): Inter-node Pod traffic will not be encrypted.
+	// - ipsec:  		 IPSec encryption is supported only for the GRE tunnel type. Antrea uses
+	//					 Preshared Key (PSK) for IKE authentication. When IPSec tunnel is enabled,
+	//					 the PSK value must be passed to Antrea Agent through an environment
+	//					 variable: ANTREA_IPSEC_PSK.
+	// - wireguard:      Enable WireGuard for tunnel traffic encryption.
+	TrafficEncryptionMode string `yaml:"trafficEncryptionMode,omitempty"`
+	// WireGuardPort is the port for the WireGuard to receive traffic.
+	// Defaults to 51850.
+	WireGuardPort int `yaml:"wireGuardPort,omitempty"`
 	// APIPort is the port for the antrea-agent APIServer to serve on.
 	// Defaults to 10350.
 	APIPort int `yaml:"apiPort,omitempty"`

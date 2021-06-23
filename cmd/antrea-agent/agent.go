@@ -114,11 +114,13 @@ func run(o *Options) error {
 	}
 
 	_, encapMode := config.GetTrafficEncapModeFromStr(o.config.TrafficEncapMode)
+	_, encryptionMode := config.GetTrafficEncryptionModeFromStr(o.config.TrafficEncryptionMode)
 	networkConfig := &config.NetworkConfig{
-		TunnelType:        ovsconfig.TunnelType(o.config.TunnelType),
-		TrafficEncapMode:  encapMode,
-		EnableIPSecTunnel: o.config.EnableIPSecTunnel,
-		TransportIface:    o.config.TransportInterface,
+		TunnelType:            ovsconfig.TunnelType(o.config.TunnelType),
+		TrafficEncapMode:      encapMode,
+		TrafficEncryptionMode: encryptionMode,
+		WireGuardPort:         o.config.WireGuardPort,
+		TransportIface:        o.config.TransportInterface,
 	}
 
 	routeClient, err := route.NewClient(serviceCIDRNet, networkConfig, o.config.NoSNAT)
@@ -166,7 +168,8 @@ func run(o *Options) error {
 		routeClient,
 		ifaceStore,
 		networkConfig,
-		nodeConfig)
+		nodeConfig,
+		agentInitializer.GetWireGuardClient())
 
 	var proxier proxy.Proxier
 	if features.DefaultFeatureGate.Enabled(features.AntreaProxy) {
