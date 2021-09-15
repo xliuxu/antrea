@@ -76,6 +76,10 @@ const (
 	// alpha: v1.4
 	// Enable flexible IPAM for Pods.
 	AntreaIPAM featuregate.Feature = "AntreaIPAM"
+
+	// alpha: v1.x
+	// Enable controlling Services of type LoadBalancer.
+	LoadBalancer featuregate.Feature = "LoadBalancer"
 )
 
 var (
@@ -100,6 +104,7 @@ var (
 		NetworkPolicyStats: {Default: true, PreRelease: featuregate.Beta},
 		NodePortLocal:      {Default: true, PreRelease: featuregate.Beta},
 		NodeIPAM:           {Default: false, PreRelease: featuregate.Alpha},
+		LoadBalancer:       {Default: false, PreRelease: featuregate.Alpha},
 	}
 
 	// UnsupportedFeaturesOnWindows records the features not supported on
