@@ -28,13 +28,16 @@ import (
 	_ "antrea.io/antrea/pkg/agent/cniserver/ipam"
 	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/controller/egress"
+	"antrea.io/antrea/pkg/agent/controller/loadbalancer"
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy"
 	"antrea.io/antrea/pkg/agent/controller/noderoute"
 	"antrea.io/antrea/pkg/agent/controller/traceflow"
+	"antrea.io/antrea/pkg/agent/floatingip"
 	"antrea.io/antrea/pkg/agent/flowexporter/connections"
 	"antrea.io/antrea/pkg/agent/flowexporter/exporter"
 	"antrea.io/antrea/pkg/agent/flowexporter/flowrecords"
 	"antrea.io/antrea/pkg/agent/interfacestore"
+	"antrea.io/antrea/pkg/agent/memberlist"
 	"antrea.io/antrea/pkg/agent/metrics"
 	npl "antrea.io/antrea/pkg/agent/nodeportlocal"
 	"antrea.io/antrea/pkg/agent/openflow"
@@ -44,6 +47,7 @@ import (
 	"antrea.io/antrea/pkg/agent/stats"
 	"antrea.io/antrea/pkg/agent/types"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions"
+	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/features"
 	"antrea.io/antrea/pkg/log"
 	"antrea.io/antrea/pkg/monitor"
@@ -78,6 +82,8 @@ func run(o *Options) error {
 	traceflowInformer := crdInformerFactory.Crd().V1alpha1().Traceflows()
 	egressInformer := crdInformerFactory.Crd().V1alpha2().Egresses()
 	nodeInformer := informerFactory.Core().V1().Nodes()
+	serviceInformer := informerFactory.Core().V1().Services()
+	endpointsInformer := informerFactory.Core().V1().Endpoints()
 	externalIPPoolInformer := crdInformerFactory.Crd().V1alpha2().ExternalIPPools()
 
 	// Create Antrea Clientset for the given config.
@@ -238,13 +244,41 @@ func run(o *Options) error {
 	}
 
 	var egressController *egress.EgressController
+	var externalIPPoolController *externalippool.ExternalIPPoolController
+	var loadBalancerController *loadbalancer.LoadBalancerController
+	var memberlistCluster *memberlist.Cluster
+	var localipdetector floatingip.LocalIPDetector
+	if features.DefaultFeatureGate.Enabled(features.Egress) || features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		externalIPPoolController, err = externalippool.NewExternalIPPoolController(
+			crdClient, externalIPPoolInformer,
+		)
+		if err != nil {
+			return fmt.Errorf("error creating new ExternalIPPool controller: %v", err)
+		}
+		memberlistCluster, err = memberlist.NewCluster(o.config.ClusterMembershipPort, nodeConfig.NodeIPv4Addr.IP,
+			nodeConfig.Name, nodeInformer, externalIPPoolInformer,
+		)
+		if err != nil {
+			return fmt.Errorf("error creating new memberlist cluster: %v", err)
+		}
+		localipdetector = floatingip.NewLocalIPDetector()
+	}
 	if features.DefaultFeatureGate.Enabled(features.Egress) {
 		egressController, err = egress.NewEgressController(
 			ofClient, antreaClientProvider, crdClient, ifaceStore, routeClient, nodeConfig.Name, nodeConfig.NodeIPv4Addr.IP,
-			o.config.ClusterMembershipPort, egressInformer, nodeInformer, externalIPPoolInformer,
+			memberlistCluster, egressInformer, nodeInformer, localipdetector,
 		)
 		if err != nil {
 			return fmt.Errorf("error creating new Egress controller: %v", err)
+		}
+	}
+	if features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		loadBalancerController, err = loadbalancer.NewLoadBalancerController(
+			nodeConfig.NodeIPv4Addr.IP, memberlistCluster, serviceInformer,
+			endpointsInformer, localipdetector,
+		)
+		if err != nil {
+			return fmt.Errorf("error creating new LoadBalancer controller: %v", err)
 		}
 	}
 
@@ -319,8 +353,17 @@ func run(o *Options) error {
 
 	go networkPolicyController.Run(stopCh)
 
+	if features.DefaultFeatureGate.Enabled(features.Egress) || features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		go externalIPPoolController.Run(stopCh)
+		go localipdetector.Run(stopCh)
+		go memberlistCluster.Run(stopCh)
+	}
 	if features.DefaultFeatureGate.Enabled(features.Egress) {
 		go egressController.Run(stopCh)
+	}
+
+	if features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		go loadBalancerController.Run(stopCh)
 	}
 
 	if features.DefaultFeatureGate.Enabled(features.NetworkPolicyStats) {

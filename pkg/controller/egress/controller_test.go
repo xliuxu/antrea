@@ -40,6 +40,7 @@ import (
 	fakeversioned "antrea.io/antrea/pkg/client/clientset/versioned/fake"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions"
 	"antrea.io/antrea/pkg/controller/egress/store"
+	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/controller/grouping"
 )
 
@@ -121,11 +122,12 @@ func newPod(namespace, name string, labels map[string]string, nodeName string, i
 
 type egressController struct {
 	*EgressController
-	client             kubernetes.Interface
-	crdClient          versioned.Interface
-	informerFactory    informers.SharedInformerFactory
-	crdInformerFactory crdinformers.SharedInformerFactory
-	groupingController *grouping.GroupEntityController
+	client              kubernetes.Interface
+	crdClient           versioned.Interface
+	informerFactory     informers.SharedInformerFactory
+	crdInformerFactory  crdinformers.SharedInformerFactory
+	groupingController  *grouping.GroupEntityController
+	externalIPAllocator *externalippool.ExternalIPPoolController
 }
 
 // objects is an initial set of K8s objects that is exposed through the client.
@@ -134,15 +136,15 @@ func newController(objects, crdObjects []runtime.Object) *egressController {
 	crdClient := fakeversioned.NewSimpleClientset(crdObjects...)
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, resyncPeriod)
+	externalIPAllocator, _ := externalippool.NewExternalIPPoolController(crdClient, crdInformerFactory.Crd().V1alpha2().ExternalIPPools())
 	egressGroupStore := store.NewEgressGroupStore()
 	egressInformer := crdInformerFactory.Crd().V1alpha2().Egresses()
-	externalIPPoolInformer := crdInformerFactory.Crd().V1alpha2().ExternalIPPools()
 	groupEntityIndex := grouping.NewGroupEntityIndex()
 	groupingController := grouping.NewGroupEntityController(groupEntityIndex,
 		informerFactory.Core().V1().Pods(),
 		informerFactory.Core().V1().Namespaces(),
 		crdInformerFactory.Crd().V1alpha2().ExternalEntities())
-	controller := NewEgressController(crdClient, groupEntityIndex, egressInformer, externalIPPoolInformer, egressGroupStore)
+	controller := NewEgressController(crdClient, groupEntityIndex, egressInformer, externalIPAllocator, egressGroupStore)
 	return &egressController{
 		controller,
 		client,
@@ -150,6 +152,7 @@ func newController(objects, crdObjects []runtime.Object) *egressController {
 		informerFactory,
 		crdInformerFactory,
 		groupingController,
+		externalIPAllocator,
 	}
 }
 
@@ -302,6 +305,7 @@ func TestAddEgress(t *testing.T) {
 			controller.crdInformerFactory.Start(stopCh)
 			controller.informerFactory.WaitForCacheSync(stopCh)
 			controller.crdInformerFactory.WaitForCacheSync(stopCh)
+			go controller.externalIPAllocator.Run(stopCh)
 			go controller.groupingInterface.Run(stopCh)
 			go controller.groupingController.Run(stopCh)
 			go controller.Run(stopCh)
@@ -339,11 +343,7 @@ func TestAddEgress(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedEgressIP, gotEgress.Spec.EgressIP)
 			if gotEgress.Spec.ExternalIPPool != "" && gotEgress.Spec.EgressIP != "" {
-				poolName := gotEgress.Spec.ExternalIPPool
-				eip, err := controller.crdClient.CrdV1alpha2().ExternalIPPools().Get(context.TODO(), poolName, metav1.GetOptions{})
-				require.NoError(t, err)
-				usage := eip.Status.Usage
-				assert.Equal(t, 1, usage.Used, "Expected one used IP in EgressIPPool Status")
+				checkExternalIPPoolUsed(t, controller, gotEgress.Spec.ExternalIPPool, 1)
 			}
 		})
 	}
@@ -357,6 +357,7 @@ func TestUpdateEgress(t *testing.T) {
 	controller.crdInformerFactory.Start(stopCh)
 	controller.informerFactory.WaitForCacheSync(stopCh)
 	controller.crdInformerFactory.WaitForCacheSync(stopCh)
+	go controller.externalIPAllocator.Run(stopCh)
 	go controller.groupingInterface.Run(stopCh)
 	go controller.groupingController.Run(stopCh)
 	go controller.Run(stopCh)
@@ -464,8 +465,6 @@ func TestUpdateEgress(t *testing.T) {
 		return !exists, nil
 	})
 	assert.NoError(t, err, "IP allocation was not deleted after the ExternalIPPool was deleted")
-	_, exists := controller.getIPAllocator(eipFoo2.Name)
-	assert.False(t, exists, "IP allocator was not deleted after the ExternalIPPool was deleted")
 	assert.Equal(t, "", gotEgressIP(), "EgressIP was not deleted after the ExternalIPPool was deleted")
 
 	// Recreate the ExternalIPPool. An EgressIP should be allocated.
@@ -674,10 +673,13 @@ func TestSyncEgressIP(t *testing.T) {
 			controller.crdInformerFactory.Start(stopCh)
 			controller.informerFactory.WaitForCacheSync(stopCh)
 			controller.crdInformerFactory.WaitForCacheSync(stopCh)
-			controller.createOrUpdateIPAllocator(tt.existingExternalIPPool)
+			go controller.externalIPAllocator.Run(stopCh)
+			// make sure the externalIPAllocator finished initialization
+			controller.externalIPAllocator.UpdateIPAllocation(nil, "")
 			for _, egress := range tt.existingEgresses {
 				controller.updateIPAllocation(egress)
 			}
+			controller.externalIPAllocator.ConsumerRestoreFinished()
 			gotEgressIP, err := controller.syncEgressIP(tt.inputEgress)
 			if tt.expectErr {
 				assert.Error(t, err)
@@ -691,7 +693,12 @@ func TestSyncEgressIP(t *testing.T) {
 }
 
 func checkExternalIPPoolUsed(t *testing.T, controller *egressController, poolName string, used int) {
-	ipAllocator, exists := controller.getIPAllocator(poolName)
+	exists := controller.externalIPAllocator.IPPoolExists(poolName)
 	require.True(t, exists)
-	assert.Equal(t, used, ipAllocator.Used())
+	err := wait.PollImmediate(50*time.Millisecond, 2*time.Second, func() (found bool, err error) {
+		eip, err := controller.crdClient.CrdV1alpha2().ExternalIPPools().Get(context.TODO(), poolName, metav1.GetOptions{})
+		require.NoError(t, err)
+		return eip.Status.Usage.Used == used, err
+	})
+	require.NoError(t, err)
 }

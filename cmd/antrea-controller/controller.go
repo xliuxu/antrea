@@ -41,7 +41,9 @@ import (
 	"antrea.io/antrea/pkg/controller/crdmirroring/crdhandler"
 	"antrea.io/antrea/pkg/controller/egress"
 	egressstore "antrea.io/antrea/pkg/controller/egress/store"
+	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/controller/grouping"
+	"antrea.io/antrea/pkg/controller/loadbalancer"
 	"antrea.io/antrea/pkg/controller/metrics"
 	"antrea.io/antrea/pkg/controller/networkpolicy"
 	"antrea.io/antrea/pkg/controller/networkpolicy/store"
@@ -228,8 +230,21 @@ func run(o *Options) error {
 	controllerMonitor := monitor.NewControllerMonitor(crdClient, legacyCRDClient, nodeInformer, controllerQuerier)
 
 	var egressController *egress.EgressController
+	var externalIPPoolController *externalippool.ExternalIPPoolController
+	var loadbalancerController *loadbalancer.LoadBalancerController
+	if features.DefaultFeatureGate.Enabled(features.Egress) || features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		externalIPPoolController, err = externalippool.NewExternalIPPoolController(
+			crdClient, externalIPPoolInformer,
+		)
+		if err != nil {
+			return fmt.Errorf("error creating new ExternalIPPool controller: %v", err)
+		}
+	}
 	if features.DefaultFeatureGate.Enabled(features.Egress) {
-		egressController = egress.NewEgressController(crdClient, groupEntityIndex, egressInformer, externalIPPoolInformer, egressGroupStore)
+		egressController = egress.NewEgressController(crdClient, groupEntityIndex, egressInformer, externalIPPoolController, egressGroupStore)
+	}
+	if features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		loadbalancerController = loadbalancer.NewLoadBalancerController(client, serviceInformer, externalIPPoolController)
 	}
 
 	var traceflowController *traceflow.Controller
@@ -347,10 +362,15 @@ func run(o *Options) error {
 			go eeMirroringController.Run(stopCh)
 		}
 	}
+	if features.DefaultFeatureGate.Enabled(features.Egress) || features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		go externalIPPoolController.Run(stopCh)
+	}
 	if features.DefaultFeatureGate.Enabled(features.Egress) {
 		go egressController.Run(stopCh)
 	}
-
+	if features.DefaultFeatureGate.Enabled(features.LoadBalancer) {
+		go loadbalancerController.Run(stopCh)
+	}
 	<-stopCh
 	klog.Info("Stopping Antrea controller")
 	return nil

@@ -438,6 +438,7 @@ function run_e2e {
     kubectl get nodes -o wide --no-headers=true | awk '{print $1}' | while read sshconfig_nodename; do
         echo "Generating ssh-config for Node ${sshconfig_nodename}"
         sshconfig_nodeip="$(kubectl get node "${sshconfig_nodename}" -o jsonpath='{.status.addresses[0].address}')"
+        # Add square brackets to IPv6 address
         if [[ ! "${sshconfig_nodeip}" =~ ^[0-9]+(\.[0-9]+){3}$ ]];then
             sshconfig_nodeip="[${sshconfig_nodeip}]"
         fi

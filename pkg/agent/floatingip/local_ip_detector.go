@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ipassigner
+package floatingip
 
-import "k8s.io/apimachinery/pkg/util/sets"
+type LocalIPChangeEventHandler func(ip string, added bool)
 
-// IPAssigner provides methods to assign or unassign IP.
-type IPAssigner interface {
-	// AssignIP ensures the provided IP is assigned to the system.
-	AssignIP(ip string) error
-	// UnassignIP ensures the provided IP is not assigned to the system.
-	UnassignIP(ip string) error
-	// AssignedIPs return the IPs that are assigned to the system by this IPAssigner.
-	AssignedIPs() sets.String
+type LocalIPDetector interface {
+	IsLocalIP(ip string) bool
+
+	// Run starts the detector.
+	Run(stopCh <-chan struct{})
+
+	// AddEventHandler registers an eventHandler of IP address update. It's not thread-safe and should be called before
+	// starting the detector.
+	AddEventHandler(handler LocalIPChangeEventHandler)
+
+	// HasSynced returns true if the cache has been initialized with the full lists of IP addresses.
+	HasSynced() bool
 }

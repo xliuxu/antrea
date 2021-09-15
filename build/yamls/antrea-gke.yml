@@ -3423,12 +3423,21 @@ rules:
   - nodes
   - pods
   - namespaces
-  - services
   - configmaps
   verbs:
   - get
   - watch
   - list
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - watch
+  - list
+  - update
+  - patch
 - apiGroups:
   - networking.k8s.io
   resources:

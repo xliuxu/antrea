@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/groupcache/consistenthash"
 	"github.com/hashicorp/memberlist"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,6 +35,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
+	"antrea.io/antrea/pkg/agent/consistenthash"
 	"antrea.io/antrea/pkg/apis/crd/v1alpha2"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha2"
 	crdlister "antrea.io/antrea/pkg/client/listers/crd/v1alpha2"
@@ -462,22 +462,26 @@ func (c *Cluster) aliveNodes() sets.String {
 	return nodes
 }
 
-// ShouldSelectEgress returns true if the local Node selected as the owner Node of the Egress,
-// the local Node in the cluster holds the same consistent hash ring for each ExternalIPPool,
-// consistentHash.Get gets the closest item (Node name) in the hash to the provided key(egressIP),
-// if the name of the local Node is equal to the name of the selected Node, returns true.
-func (c *Cluster) ShouldSelectEgress(egress *v1alpha2.Egress) (bool, error) {
-	eipName := egress.Spec.ExternalIPPool
-	if eipName == "" || egress.Spec.EgressIP == "" {
+// ShouldSelectIP returns true if the local Node selected as the owner Node of the IP in the specific
+// ExternalIPPool. The local Node in the cluster holds the same consistent hash ring for each ExternalIPPool,
+// consistentHash.Get gets the closest item (Node name) in the hash to the provided key (IP). If filters are
+// present, the item returned is guaranteed to pass all filters (returns true) unless there are no items matched.
+// If the name of the local Node is equal to the name of the selected Node, returns true.
+func (c *Cluster) ShouldSelectIP(ip, externalIPPool string, filters ...func(string) bool) (bool, error) {
+	if externalIPPool == "" || ip == "" {
 		return false, nil
 	}
 	c.consistentHashRWMutex.RLock()
 	defer c.consistentHashRWMutex.RUnlock()
-	consistentHash, ok := c.consistentHashMap[eipName]
+	consistentHash, ok := c.consistentHashMap[externalIPPool]
 	if !ok {
-		return false, fmt.Errorf("local Node consistentHashMap has not synced, ExternalIPPool %s", eipName)
+		return false, fmt.Errorf("local Node consistentHashMap has not synced, ExternalIPPool %s", externalIPPool)
 	}
-	return consistentHash.Get(egress.Spec.EgressIP) == c.nodeName, nil
+	node := consistentHash.GetWithFilters(ip, filters...)
+	if node == "" {
+		klog.Warningf("No valid Node chosen for IP %s in externalIPPool %s", ip, externalIPPool)
+	}
+	return node == c.nodeName, nil
 }
 
 func (c *Cluster) notify(objName string) {

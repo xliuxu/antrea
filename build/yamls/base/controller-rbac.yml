@@ -16,12 +16,24 @@ rules:
       - nodes
       - pods
       - namespaces
-      - services
       - configmaps
     verbs:
       - get
       - watch
       - list
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - services/status
+    verbs:
+      - get
+      - watch
+      - list
+      - update
+      - patch
+      - create
+      - delete
   - apiGroups:
       - networking.k8s.io
     resources:

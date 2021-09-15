@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ipassigner
+package floatingip
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ func NewIPAssigner(nodeIPAddr net.IP, dummyDeviceName string) (*ipAssigner, erro
 	} else {
 		nodeIPs.IPv4 = nodeIPAddr
 	}
-	_, _, egressInterface, err := util.GetIPNetDeviceFromIP(nodeIPs)
+	_, _, externalInterface, err := util.GetIPNetDeviceFromIP(nodeIPs)
 	if err != nil {
 		return nil, fmt.Errorf("get IPNetDevice from ip %v error: %+v", nodeIPAddr, err)
 	}
@@ -65,7 +65,7 @@ func NewIPAssigner(nodeIPAddr net.IP, dummyDeviceName string) (*ipAssigner, erro
 	}
 
 	a := &ipAssigner{
-		externalInterface: egressInterface,
+		externalInterface: externalInterface,
 		dummyDevice:       dummyDevice,
 		assignedIPs:       sets.NewString(),
 	}
