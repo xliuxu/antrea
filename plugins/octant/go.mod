@@ -16,7 +16,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.2.0 // indirect
 	github.com/Azure/go-autorest/logger v0.1.0 // indirect
 	github.com/Azure/go-autorest/tracing v0.5.0 // indirect
-	github.com/awalterschulze/gographviz v2.0.1+incompatible // indirect
+	github.com/awalterschulze/gographviz v2.0.3+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dlclark/regexp2 v1.2.0 // indirect
