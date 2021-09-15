@@ -3457,6 +3457,13 @@ rules:
   - watch
   - list
 - apiGroups:
+  - ""
+  resources:
+  - services/status
+  verbs:
+  - update
+  - patch
+- apiGroups:
   - discovery.k8s.io
   resources:
   - endpointslices
@@ -3612,7 +3619,6 @@ rules:
   resources:
   - pods
   - namespaces
-  - services
   - configmaps
   verbs:
   - get
@@ -3626,6 +3632,17 @@ rules:
   - get
   - watch
   - list
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - services/status
+  verbs:
+  - get
+  - watch
+  - list
+  - update
   - patch
 - apiGroups:
   - networking.k8s.io
@@ -3989,6 +4006,9 @@ data:
     # Deployments and StatefulSets via IP Pool annotation.
     #  AntreaIPAM: false
 
+    # Enable controlling external IPs of Services.
+    #  ServiceExternalIP: false
+
     # Name of the OpenVSwitch bridge antrea-agent will create and use.
     # Make sure it doesn't conflict with your existing OpenVSwitch bridges.
     #ovsBridge: br-int
@@ -4201,7 +4221,9 @@ data:
     # Enable flexible IPAM mode for Antrea. This mode allows to assign IP Ranges to Namespaces,
     # Deployments and StatefulSets via IP Pool annotation.
     #  AntreaIPAM: false
-    #
+
+    # Enable controlling external IPs of Services.
+    #  ServiceExternalIP: false
 
     # The port for the antrea-controller APIServer to serve on.
     # Note that if it's set to another value, the `containerPort` of the `api` port of the
@@ -4269,7 +4291,7 @@ metadata:
   annotations: {}
   labels:
     app: antrea
-  name: antrea-config-25kc566684
+  name: antrea-config-88kg62t2d9
   namespace: kube-system
 ---
 apiVersion: v1
@@ -4340,7 +4362,7 @@ spec:
             fieldRef:
               fieldPath: spec.serviceAccountName
         - name: ANTREA_CONFIG_MAP_NAME
-          value: antrea-config-25kc566684
+          value: antrea-config-88kg62t2d9
         image: projects.registry.vmware.com/antrea/antrea-ubuntu:latest
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -4391,7 +4413,7 @@ spec:
         key: node-role.kubernetes.io/master
       volumes:
       - configMap:
-          name: antrea-config-25kc566684
+          name: antrea-config-88kg62t2d9
         name: antrea-config
       - name: antrea-controller-tls
         secret:
@@ -4675,7 +4697,7 @@ spec:
           path: /home/kubernetes/bin
         name: host-cni-bin
       - configMap:
-          name: antrea-config-25kc566684
+          name: antrea-config-88kg62t2d9
         name: antrea-config
       - hostPath:
           path: /etc/cni/net.d

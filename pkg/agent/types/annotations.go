@@ -23,4 +23,7 @@ const (
 
 	// NodeWireGuardPublicAnnotationKey represents the key of the Node's WireGuard public key in the Annotations of the Node.
 	NodeWireGuardPublicAnnotationKey string = "node.antrea.io/wireguard-public-key"
+
+	// ExternalIPPoolAnnotationKey is the key of the Service annotation that specifies the Service's desired external IP pool.
+	ExternalIPPoolAnnotationKey string = "antrea.io/external-ip-pool"
 )
