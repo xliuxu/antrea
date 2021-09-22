@@ -67,6 +67,10 @@ const (
 	// alpha: v1.0
 	// Enable controlling SNAT IPs of Pod egress traffic.
 	Egress featuregate.Feature = "Egress"
+
+	// alpha: v1.4
+	// Enable controlling Services of type LoadBalancer.
+	LoadBalancer featuregate.Feature = "LoadBalancer"
 )
 
 var (
@@ -89,6 +93,7 @@ var (
 		FlowExporter:       {Default: false, PreRelease: featuregate.Alpha},
 		NetworkPolicyStats: {Default: true, PreRelease: featuregate.Beta},
 		NodePortLocal:      {Default: false, PreRelease: featuregate.Alpha},
+		LoadBalancer:       {Default: false, PreRelease: featuregate.Alpha},
 	}
 
 	// UnsupportedFeaturesOnWindows records the features not supported on

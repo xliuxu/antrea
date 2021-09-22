@@ -12,27 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package egress
+package floatingip
 
-// Not implemented yet. The feature gate verification will protect this from being run.
-type localIPDetector struct{}
+import (
+	"net"
 
-func (d *localIPDetector) IsLocalIP(ip string) bool {
-	return false
+	"k8s.io/apimachinery/pkg/util/sets"
+)
+
+type ipAssigner struct {
 }
 
-func (d *localIPDetector) Run(stopCh <-chan struct{}) {
-	return
+func NewIPAssigner(nodeIPAddr net.IP, dummyDeviceName string) (*ipAssigner, error) {
+	return nil, nil
 }
 
-func (d *localIPDetector) AddEventHandler(handler eventHandler) {
-	return
+func (a *ipAssigner) AssignIP(ip string) error {
+	return nil
 }
 
-func (d *localIPDetector) HasSynced() bool {
-	return false
+func (a *ipAssigner) UnassignIP(ip string) error {
+	return nil
 }
 
-func NewLocalIPDetector() *localIPDetector {
-	return &localIPDetector{}
+func (a *ipAssigner) AssignedIPs() sets.String {
+	return nil
 }

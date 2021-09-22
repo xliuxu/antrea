@@ -16,6 +16,7 @@ package egress
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,67 +32,9 @@ func marshal(object runtime.Object) []byte {
 	return raw
 }
 
-func TestEgressControllerValidateExternalIPPool(t *testing.T) {
-	tests := []struct {
-		name             string
-		request          *admv1.AdmissionRequest
-		expectedResponse *admv1.AdmissionResponse
-	}{
-		{
-			name: "CREATE operation should be allowed",
-			request: &admv1.AdmissionRequest{
-				Name:      "foo",
-				Operation: "CREATE",
-				Object:    runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "", ""))},
-			},
-			expectedResponse: &admv1.AdmissionResponse{Allowed: true},
-		},
-		{
-			name: "Deleting IPRange should not be allowed",
-			request: &admv1.AdmissionRequest{
-				Name:      "foo",
-				Operation: "UPDATE",
-				OldObject: runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "10.10.20.1", "10.10.20.2"))},
-				Object:    runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "", ""))},
-			},
-			expectedResponse: &admv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: "existing IPRanges [10.10.20.1-10.10.20.2] cannot be deleted",
-				},
-			},
-		},
-		{
-			name: "Adding IPRange should be allowed",
-			request: &admv1.AdmissionRequest{
-				Name:      "foo",
-				Operation: "UPDATE",
-				OldObject: runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "", ""))},
-				Object:    runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "10.10.20.1", "10.10.20.2"))},
-			},
-			expectedResponse: &admv1.AdmissionResponse{Allowed: true},
-		},
-		{
-			name: "DELETE operation should be allowed",
-			request: &admv1.AdmissionRequest{
-				Name:      "foo",
-				Operation: "DELETE",
-				Object:    runtime.RawExtension{Raw: marshal(newExternalIPPool("foo", "10.10.10.0/24", "", ""))},
-			},
-			expectedResponse: &admv1.AdmissionResponse{Allowed: true},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := newController(nil, nil)
-			review := &admv1.AdmissionReview{
-				Request: tt.request,
-			}
-			gotResponse := c.ValidateExternalIPPool(review)
-			assert.Equal(t, tt.expectedResponse, gotResponse)
-		})
-	}
-}
+var (
+	errExternalIPPoolNotFound = errors.New("ExternalIPPool not found")
+)
 
 func TestEgressControllerValidateEgress(t *testing.T) {
 	tests := []struct {
@@ -192,14 +135,25 @@ func TestEgressControllerValidateEgress(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := newController(nil, nil)
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			var objs []runtime.Object
 			if tt.existingExternalIPPool != nil {
-				c.createOrUpdateIPAllocator(tt.existingExternalIPPool)
+				objs = append(objs, tt.existingExternalIPPool)
 			}
+			controller := newController(nil, objs)
+			controller.informerFactory.Start(stopCh)
+			controller.crdInformerFactory.Start(stopCh)
+			controller.informerFactory.WaitForCacheSync(stopCh)
+			controller.crdInformerFactory.WaitForCacheSync(stopCh)
+			go controller.externalIPAllocator.Run(stopCh)
+			// make sure the externalIPAllocator finished initialization
+			controller.externalIPAllocator.UpdateIPAllocation(nil, "")
+			controller.externalIPAllocator.ConsumerRestoreFinished()
 			review := &admv1.AdmissionReview{
 				Request: tt.request,
 			}
-			gotResponse := c.ValidateEgress(review)
+			gotResponse := controller.ValidateEgress(review)
 			assert.Equal(t, tt.expectedResponse, gotResponse)
 		})
 	}
