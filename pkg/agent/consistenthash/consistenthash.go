@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// The idea is borrowed from https://github.com/golang/groupcache/blob/master/consistenthash/consistenthash.go with the following modifications:
+// - Store the replicas in a 2-3-4 btree so that we can add/remove keys in O(log N) without rebuilding the whole cache.
+// - Add a function GetWithFilters() to allow filtering keys with desired filters.
+
 // Package consistenthash provides an implementation of a ring hash.
 package consistenthash
 
@@ -102,7 +106,7 @@ func (m *Map) Get(key string) string {
 	return m.GetWithFilters(key)
 }
 
-// Get gets the closest item in the hash to the provided key with filters.
+// GetWithFilters gets the closest item in the hash to which passes all filters.
 func (m *Map) GetWithFilters(key string, filters ...func(string) bool) string {
 	if m.IsEmpty() {
 		return ""

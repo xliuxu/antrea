@@ -169,7 +169,7 @@ func makeService(name, namespace string, serviceType corev1.ServiceType,
 	}
 	if ipPool != "" {
 		service.Annotations = map[string]string{
-			types.ExternalIPPoolAnnotationKey: ipPool,
+			types.ServiceExternalIPPoolAnnotationKey: ipPool,
 		}
 	}
 	return service
@@ -408,7 +408,7 @@ func TestUpdateService(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:            "Service updated External IP and local Node not selected",
+			name:            "Service updated external IP and local Node not selected",
 			endpoints:       nil,
 			serviceToUpdate: service1UpdatedExternalIP,
 			previousExternalIPStates: map[apimachinerytypes.NamespacedName]externalIPState{

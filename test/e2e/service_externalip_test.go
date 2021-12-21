@@ -17,6 +17,8 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -46,7 +48,7 @@ func TestServiceExternalIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error when setting up test: %v", err)
 	}
-	defer teardownTest(t, data)
+	// 	defer teardownTest(t, data)
 
 	cc := func(config *controllerconfig.ControllerConfig) {
 		config.FeatureGates["ServiceExternalIP"] = true
@@ -63,6 +65,7 @@ func TestServiceExternalIP(t *testing.T) {
 	t.Run("testServiceUpdateExternalIP", func(t *testing.T) { testServiceUpdateExternalIP(t, data) })
 	t.Run("testServiceExternalTrafficPolicyLocal", func(t *testing.T) { testServiceExternalTrafficPolicyLocal(t, data) })
 	t.Run("testServiceNodeFailure", func(t *testing.T) { testServiceNodeFailure(t, data) })
+	t.Run("testExternalIPAccessWithAntreaProxy", func(t *testing.T) { testExternalIPAccessWithAntreaProxy(t, data) })
 }
 
 func testServiceExternalTrafficPolicyLocal(t *testing.T, data *TestData) {
@@ -439,7 +442,7 @@ func testServiceUpdateExternalIP(t *testing.T, data *TestData) {
 			defer data.crdClient.CrdV1alpha2().ExternalIPPools().Delete(context.TODO(), newPool.Name, metav1.DeleteOptions{})
 
 			annotation := map[string]string{
-				antreaagenttypes.ExternalIPPoolAnnotationKey: originalPool.Name,
+				antreaagenttypes.ServiceExternalIPPoolAnnotationKey: originalPool.Name,
 			}
 			service, err := data.createServiceWithAnnotations(fmt.Sprintf("test-lb-%d", idx),
 				testNamespace, 80, 80, corev1.ProtocolTCP, nil, false, false, v1.ServiceTypeLoadBalancer, nil, annotation)
@@ -455,7 +458,7 @@ func testServiceUpdateExternalIP(t *testing.T, data *TestData) {
 
 			toUpdate := service.DeepCopy()
 			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				toUpdate.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey] = newPool.Name
+				toUpdate.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey] = newPool.Name
 				_, err = data.clientset.CoreV1().Services(toUpdate.Namespace).Update(context.TODO(), toUpdate, metav1.UpdateOptions{})
 				if err != nil && errors.IsConflict(err) {
 					toUpdate, _ = data.clientset.CoreV1().Services(toUpdate.Namespace).Get(context.TODO(), toUpdate.Name, metav1.GetOptions{})
@@ -526,7 +529,7 @@ func testServiceNodeFailure(t *testing.T, data *TestData) {
 			externalIPPoolTwoNodes := data.createExternalIPPool(t, "pool-with-two-nodes-", tt.ipRange, matchExpressions, nil)
 			defer data.crdClient.CrdV1alpha2().ExternalIPPools().Delete(context.TODO(), externalIPPoolTwoNodes.Name, metav1.DeleteOptions{})
 			annotation := map[string]string{
-				antreaagenttypes.ExternalIPPoolAnnotationKey: externalIPPoolTwoNodes.Name,
+				antreaagenttypes.ServiceExternalIPPoolAnnotationKey: externalIPPoolTwoNodes.Name,
 			}
 			service, err := data.createServiceWithAnnotations("test-service-node-failure", testNamespace, 80, 80,
 				corev1.ProtocolTCP, nil, false, false, v1.ServiceTypeLoadBalancer, nil, annotation)
@@ -550,6 +553,101 @@ func testServiceNodeFailure(t *testing.T, data *TestData) {
 			restoreAgent(originalNode)
 			_, err = data.waitForServiceConfigured(service, tt.expectedIP, originalNode)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func testExternalIPAccessWithAntreaProxy(t *testing.T, data *TestData) {
+	tests := []struct {
+		name    string
+		ipRange v1alpha2.IPRange
+	}{
+		{
+			name:    "IPv4 cluster",
+			ipRange: v1alpha2.IPRange{CIDR: "169.254.170.0/30"},
+		},
+		{
+			name:    "IPv6 cluster",
+			ipRange: v1alpha2.IPRange{CIDR: "2021:4::aab0/124"},
+		},
+	}
+	for _, tt := range tests {
+		skipIfProxyAllDisabled(t, data)
+		ipFamily := corev1.IPv4Protocol
+		if utilnet.IsIPv6CIDRString(tt.ipRange.CIDR) {
+			skipIfNotIPv6Cluster(t)
+			ipFamily = corev1.IPv6Protocol
+		} else {
+			skipIfNotIPv4Cluster(t)
+		}
+		// Create busybox Pods on each Node as a client.
+		nodes := []string{nodeName(0), nodeName(1)}
+		var busyboxes, busyboxIPs []string
+		for idx, node := range nodes {
+			podName, ips, _ := createAndWaitForPod(t, data, data.createBusyboxPodOnNode, fmt.Sprintf("busybox-%d-", idx), node, testNamespace, false)
+			busyboxes = append(busyboxes, podName)
+			if ipFamily == corev1.IPv4Protocol {
+				busyboxIPs = append(busyboxIPs, ips.ipv4.String())
+			} else {
+				busyboxIPs = append(busyboxIPs, ips.ipv6.String())
+			}
+		}
+
+		ipPool := data.createExternalIPPool(t, "ippool-", tt.ipRange, nil, nil)
+		defer data.crdClient.CrdV1alpha2().ExternalIPPools().Delete(context.TODO(), ipPool.Name, metav1.DeleteOptions{})
+
+		var port int32 = 8080
+		// Create two LoadBalancer Services. The externalTrafficPolicy of one Service is Cluster, and the externalTrafficPolicy
+		// of another one is Local.
+		annotations := map[string]string{
+			antreaagenttypes.ServiceExternalIPPoolAnnotationKey: ipPool.Name,
+		}
+		serviceCluster, err := data.createServiceWithAnnotations("agnhost-cluster", testNamespace, port, port, corev1.ProtocolTCP, map[string]string{"app": "agnhost"}, false, false, corev1.ServiceTypeLoadBalancer, &ipFamily, annotations)
+		require.NoError(t, err)
+		serviceLocal, err := data.createServiceWithAnnotations("agnhost-local", testNamespace, port, port, corev1.ProtocolTCP, map[string]string{"app": "agnhost"}, false, true, corev1.ServiceTypeLoadBalancer, &ipFamily, annotations)
+		require.NoError(t, err)
+
+		waitExternalIPConfigured := func(service *v1.Service) (string, error) {
+			var ip string
+			err := wait.PollImmediate(200*time.Millisecond, 5*time.Second, func() (done bool, err error) {
+				service, err = data.clientset.CoreV1().Services(service.Namespace).Get(context.TODO(), service.Name, metav1.GetOptions{})
+				if err != nil {
+					return false, err
+				}
+				if len(service.Status.LoadBalancer.Ingress) == 0 {
+					return false, nil
+				}
+				ip = service.Status.LoadBalancer.Ingress[0].IP
+				return true, nil
+			})
+			return ip, err
+		}
+
+		externalIPCluster, err := waitExternalIPConfigured(serviceCluster)
+		require.NoError(t, err)
+		externalIPLocal, err := waitExternalIPConfigured(serviceLocal)
+		require.NoError(t, err)
+
+		clusterUrl := net.JoinHostPort(externalIPCluster, strconv.FormatInt(int64(port), 10))
+		localUrl := net.JoinHostPort(externalIPLocal, strconv.FormatInt(int64(port), 10))
+
+		agnhosts := []string{"agnhost-0", "agnhost-1"}
+		for idx, node := range nodes {
+			createAgnhostPod(t, data, agnhosts[idx], node, false)
+		}
+
+		t.Run("Non-HostNetwork Endpoints", func(t *testing.T) {
+			loadBalancerTestCases(t, data, clusterUrl, localUrl, nodes, busyboxes, busyboxIPs, agnhosts)
+		})
+
+		// Delete agnhost Pods which are not on host network and create new agnhost Pods which are on host network.
+		hostAgnhosts := []string{"agnhost-host-0", "agnhost-host-1"}
+		for idx, node := range nodes {
+			require.NoError(t, data.deletePod(testNamespace, agnhosts[idx]))
+			createAgnhostPod(t, data, hostAgnhosts[idx], node, true)
+		}
+		t.Run("HostNetwork Endpoints", func(t *testing.T) {
+			loadBalancerTestCases(t, data, clusterUrl, localUrl, nodes, busyboxes, busyboxIPs, nodes)
 		})
 	}
 }

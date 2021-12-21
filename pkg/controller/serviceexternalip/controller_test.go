@@ -75,7 +75,7 @@ func newService(name, namespace string, serviceType corev1.ServiceType, external
 	}
 	if ipPool != "" {
 		service.Annotations = map[string]string{
-			antreaagenttypes.ExternalIPPoolAnnotationKey: ipPool,
+			antreaagenttypes.ServiceExternalIPPoolAnnotationKey: ipPool,
 		}
 	}
 	return service
@@ -169,7 +169,7 @@ func TestAddService(t *testing.T) {
 				externalIP = getServiceExternalIP(svcUpdated)
 				return externalIP == tt.expectedExternalIP
 			}, 500*time.Millisecond, 100*time.Millisecond)
-			ipPool := svcUpdated.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey]
+			ipPool := svcUpdated.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey]
 			assert.NotEmpty(t, ipPool)
 			assert.True(t, controller.externalIPAllocator.IPPoolExists(ipPool))
 			assert.True(t, controller.externalIPAllocator.IPPoolHasIP(ipPool, net.ParseIP(externalIP)))
@@ -220,7 +220,7 @@ func TestSyncService(t *testing.T) {
 	checkExternalIPPoolUsed(t, controller, ctx, "eip1", 1)
 
 	// Change ExternalIPPool annotation.
-	service.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey] = "eip2"
+	service.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey] = "eip2"
 	_, err = controller.client.CoreV1().Services(service.Namespace).Update(ctx, service, metav1.UpdateOptions{})
 	assert.NoError(t, err)
 	checkForServiceExternalIP(t, controller, ctx, service.Name, service.Namespace, "")
@@ -244,7 +244,7 @@ func TestSyncService(t *testing.T) {
 
 	// Specify IP from ExternalIPPool with mismatched ExternalIPPool annotation.
 	service.Spec.LoadBalancerIP = "1.2.4.4"
-	service.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey] = "eip1"
+	service.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey] = "eip1"
 	_, err = controller.client.CoreV1().Services(service.Namespace).Update(ctx, service, metav1.UpdateOptions{})
 	assert.NoError(t, err)
 	checkForServiceExternalIP(t, controller, ctx, service.Name, service.Namespace, "1.2.4.4")
@@ -253,7 +253,7 @@ func TestSyncService(t *testing.T) {
 
 	// Specify non-existent IP of ExternalIPPool.
 	service.Spec.LoadBalancerIP = "1.2.4.6"
-	service.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey] = "eip2"
+	service.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey] = "eip2"
 	_, err = controller.client.CoreV1().Services(service.Namespace).Update(ctx, service, metav1.UpdateOptions{})
 	assert.NoError(t, err)
 	checkForServiceExternalIP(t, controller, ctx, service.Name, service.Namespace, "")

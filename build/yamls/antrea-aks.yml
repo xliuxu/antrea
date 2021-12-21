@@ -4222,7 +4222,7 @@ data:
     # Deployments and StatefulSets via IP Pool annotation.
     #  AntreaIPAM: false
 
-    # Enable controlling external IPs of Services.
+    # Enable managing external IPs of Services of LoadBalancer type.
     #  ServiceExternalIP: false
 
     # The port for the antrea-controller APIServer to serve on.
@@ -4291,7 +4291,7 @@ metadata:
   annotations: {}
   labels:
     app: antrea
-  name: antrea-config-7c69b28hk8
+  name: antrea-config-dhf24fcdkf
   namespace: kube-system
 ---
 apiVersion: v1
@@ -4362,7 +4362,7 @@ spec:
             fieldRef:
               fieldPath: spec.serviceAccountName
         - name: ANTREA_CONFIG_MAP_NAME
-          value: antrea-config-7c69b28hk8
+          value: antrea-config-dhf24fcdkf
         image: projects.registry.vmware.com/antrea/antrea-ubuntu:latest
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -4413,7 +4413,7 @@ spec:
         key: node-role.kubernetes.io/master
       volumes:
       - configMap:
-          name: antrea-config-7c69b28hk8
+          name: antrea-config-dhf24fcdkf
         name: antrea-config
       - name: antrea-controller-tls
         secret:
@@ -4694,7 +4694,7 @@ spec:
         operator: Exists
       volumes:
       - configMap:
-          name: antrea-config-7c69b28hk8
+          name: antrea-config-dhf24fcdkf
         name: antrea-config
       - hostPath:
           path: /etc/cni/net.d

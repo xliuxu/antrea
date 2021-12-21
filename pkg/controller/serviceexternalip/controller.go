@@ -108,7 +108,7 @@ func NewServiceExternalIPController(
 		if !ok {
 			return nil, fmt.Errorf("obj is not Service: %+v", obj)
 		}
-		eipName, ok := service.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey]
+		eipName, ok := service.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey]
 		if !ok {
 			return nil, nil
 		}
@@ -191,7 +191,7 @@ func (c *ServiceExternalIPController) Run(stopCh <-chan struct{}) {
 func (c *ServiceExternalIPController) restoreIPAllocations(services []*corev1.Service) {
 	var previousIPAllocations []externalippool.IPAllocation
 	for _, svc := range services {
-		ipPool := svc.ObjectMeta.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey]
+		ipPool := svc.ObjectMeta.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey]
 		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer || ipPool == "" || len(svc.Status.LoadBalancer.Ingress) == 0 {
 			continue
 		}
@@ -303,11 +303,11 @@ func (c *ServiceExternalIPController) syncService(key apimachinerytypes.Namespac
 		return nil
 	}
 
-	currentIPPool := service.ObjectMeta.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey]
+	currentIPPool := service.ObjectMeta.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey]
 	prevIPAllocation, allocationExists := c.getAssignedExternalIPAllocation(key)
 	currentExternalIP := getServiceExternalIP(service)
 
-	// If user specifies external IP in spec, we should check whether it matches the current External IP.
+	// If user specifies external IP in spec, we should check whether it matches the current external IP.
 	specIPMatched := service.Spec.LoadBalancerIP == "" || service.Spec.LoadBalancerIP == currentExternalIP
 
 	if allocationExists && specIPMatched &&
@@ -318,7 +318,7 @@ func (c *ServiceExternalIPController) syncService(key apimachinerytypes.Namespac
 		return nil
 	}
 
-	// The ExternalIPPool does not exist or has been deleted. Reclaim the External IP.
+	// The ExternalIPPool does not exist or has been deleted. Reclaim the external IP.
 	if currentIPPool != "" && !c.externalIPAllocator.IPPoolExists(currentIPPool) {
 		c.deleteExternalIP(key)
 		if currentExternalIP != "" {
@@ -327,7 +327,7 @@ func (c *ServiceExternalIPController) syncService(key apimachinerytypes.Namespac
 		}
 	}
 
-	// the External IP or ExternalIPPool changed somehow. Delete the previous allocation.
+	// the external IP or ExternalIPPool changed somehow. Delete the previous allocation.
 	c.deleteExternalIP(key)
 	var newIPPool string
 	var newExternalIP net.IP
@@ -358,7 +358,7 @@ func (c *ServiceExternalIPController) syncService(key apimachinerytypes.Namespac
 	if service.Annotations == nil {
 		service.Annotations = make(map[string]string)
 	}
-	service.Annotations[antreaagenttypes.ExternalIPPoolAnnotationKey] = newIPPool
+	service.Annotations[antreaagenttypes.ServiceExternalIPPoolAnnotationKey] = newIPPool
 	service.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
 		{
 			IP: newExternalIP.String(),

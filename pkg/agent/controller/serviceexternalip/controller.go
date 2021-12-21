@@ -53,7 +53,7 @@ const (
 	ExternalIPIndex     = "externalIP"
 	externalIPPoolIndex = "externalIPPool"
 
-	// externalIPDummyDevice is the dummy device that holds the External IPs configured to the system by antrea-agent.
+	// externalIPDummyDevice is the dummy device that holds the external IPs configured to the system by antrea-agent.
 	externalIPDummyDevice = "antrea-ingress0"
 )
 
@@ -129,7 +129,7 @@ func NewServiceExternalIPController(
 		if !ok {
 			return nil, fmt.Errorf("obj is not Service: %+v", obj)
 		}
-		eipName, ok := service.Annotations[types.ExternalIPPoolAnnotationKey]
+		eipName, ok := service.Annotations[types.ServiceExternalIPPoolAnnotationKey]
 		if !ok {
 			return nil, nil
 		}
@@ -272,7 +272,7 @@ func (c *ServiceExternalIPController) removeStaleExternalIPs() {
 	services, _ := c.serviceLister.List(labels.Everything())
 	for _, service := range services {
 		if service.Spec.Type == corev1.ServiceTypeLoadBalancer &&
-			service.ObjectMeta.Annotations[types.ExternalIPPoolAnnotationKey] != "" &&
+			service.ObjectMeta.Annotations[types.ServiceExternalIPPoolAnnotationKey] != "" &&
 			len(service.Status.LoadBalancer.Ingress) != 0 {
 			desiredExternalIPs.Insert(service.Status.LoadBalancer.Ingress[0].IP)
 		}
@@ -379,7 +379,7 @@ func (c *ServiceExternalIPController) syncService(key apimachinerytypes.Namespac
 		}
 	}
 
-	ipPoool := service.ObjectMeta.Annotations[types.ExternalIPPoolAnnotationKey]
+	ipPoool := service.ObjectMeta.Annotations[types.ServiceExternalIPPoolAnnotationKey]
 	if currentExternalIP == "" || ipPoool == "" {
 		return nil
 	}
