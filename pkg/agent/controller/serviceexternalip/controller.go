@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	apimachinerytypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,7 +34,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	"antrea.io/antrea/pkg/agent/ipassigner"
+	ipassignerinterface "antrea.io/antrea/pkg/agent/ipassigner"
+	ipassigner "antrea.io/antrea/pkg/agent/ipassigner/virtual"
 	"antrea.io/antrea/pkg/agent/memberlist"
 	"antrea.io/antrea/pkg/agent/types"
 )
@@ -52,9 +52,6 @@ const (
 
 	externalIPIndex     = "externalIP"
 	externalIPPoolIndex = "externalIPPool"
-
-	// ingressDummyDevice is the dummy device that holds the Service external IPs configured to the system by antrea-agent.
-	ingressDummyDevice = "antrea-ingress0"
 )
 
 type externalIPState struct {
@@ -79,9 +76,8 @@ type ServiceExternalIPController struct {
 	externalIPStates      map[apimachinerytypes.NamespacedName]externalIPState
 	externalIPStatesMutex sync.RWMutex
 
-	cluster         memberlist.Interface
-	ipAssigner      ipassigner.IPAssigner
-	localIPDetector ipassigner.LocalIPDetector
+	cluster    memberlist.Interface
+	ipAssigner ipassignerinterface.IPAssigner
 }
 
 func NewServiceExternalIPController(
@@ -91,7 +87,6 @@ func NewServiceExternalIPController(
 	cluster memberlist.Interface,
 	serviceInformer coreinformers.ServiceInformer,
 	endpointsInformer coreinformers.EndpointsInformer,
-	localIPDetector ipassigner.LocalIPDetector,
 ) (*ServiceExternalIPController, error) {
 	c := &ServiceExternalIPController{
 		nodeName:              nodeName,
@@ -105,9 +100,8 @@ func NewServiceExternalIPController(
 		endpointsLister:       endpointsInformer.Lister(),
 		endpointsListerSynced: endpointsInformer.Informer().HasSynced,
 		externalIPStates:      make(map[apimachinerytypes.NamespacedName]externalIPState),
-		localIPDetector:       localIPDetector,
 	}
-	ipAssigner, err := ipassigner.NewIPAssigner(nodeTransportIP, ingressDummyDevice)
+	ipAssigner, err := ipassigner.NewIPAssigner(nodeTransportIP)
 	if err != nil {
 		return nil, fmt.Errorf("initializing service external IP assigner failed: %v", err)
 	}
@@ -159,7 +153,6 @@ func NewServiceExternalIPController(
 		resyncPeriod,
 	)
 
-	c.localIPDetector.AddEventHandler(c.onLocalIPUpdate)
 	c.cluster.AddClusterEventHandler(c.enqueueServicesByExternalIPPool)
 	return c, nil
 }
@@ -233,6 +226,7 @@ func (c *ServiceExternalIPController) enqueueServicesByExternalIPPool(eipName st
 // workqueue.
 func (c *ServiceExternalIPController) Run(stopCh <-chan struct{}) {
 	defer c.queue.ShutDown()
+	go c.ipAssigner.Run(stopCh)
 
 	klog.Infof("Starting %s", controllerName)
 	defer klog.Infof("Shutting down %s", controllerName)
@@ -241,33 +235,10 @@ func (c *ServiceExternalIPController) Run(stopCh <-chan struct{}) {
 		return
 	}
 
-	c.removeStaleExternalIPs()
-
 	for i := 0; i < defaultWorkers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
 	<-stopCh
-}
-
-// removeStaleExternalIPs unassigns stale external IPs that shouldn't be present on this Node.
-// This function will only delete IPs which are caused by Service changes when the agent on this Node was
-// not running. Those IPs should be deleted caused by migration will be deleted by processNextWorkItem.
-func (c *ServiceExternalIPController) removeStaleExternalIPs() {
-	desiredExternalIPs := sets.NewString()
-	services, _ := c.serviceLister.List(labels.Everything())
-	for _, service := range services {
-		if service.Spec.Type == corev1.ServiceTypeLoadBalancer &&
-			service.ObjectMeta.Annotations[types.ServiceExternalIPPoolAnnotationKey] != "" &&
-			len(service.Status.LoadBalancer.Ingress) != 0 {
-			desiredExternalIPs.Insert(service.Status.LoadBalancer.Ingress[0].IP)
-		}
-	}
-	actualExternalIPs := c.ipAssigner.AssignedIPs()
-	for ip := range actualExternalIPs.Difference(desiredExternalIPs) {
-		if err := c.ipAssigner.UnassignIP(ip); err != nil {
-			klog.ErrorS(err, "Failed to clean up stale service external IP", "ip", ip)
-		}
-	}
 }
 
 func (c *ServiceExternalIPController) onLocalIPUpdate(ip string, added bool) {

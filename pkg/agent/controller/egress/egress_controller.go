@@ -38,7 +38,8 @@ import (
 
 	"antrea.io/antrea/pkg/agent"
 	"antrea.io/antrea/pkg/agent/interfacestore"
-	"antrea.io/antrea/pkg/agent/ipassigner"
+	ipassignerinterface "antrea.io/antrea/pkg/agent/ipassigner"
+	ipassigner "antrea.io/antrea/pkg/agent/ipassigner/physical"
 	"antrea.io/antrea/pkg/agent/memberlist"
 	"antrea.io/antrea/pkg/agent/openflow"
 	"antrea.io/antrea/pkg/agent/route"
@@ -141,7 +142,7 @@ type EgressController struct {
 	egressIPStatesMutex sync.Mutex
 
 	cluster    *memberlist.Cluster
-	ipAssigner ipassigner.IPAssigner
+	ipAssigner ipassignerinterface.IPAssigner
 }
 
 func NewEgressController(
@@ -155,7 +156,6 @@ func NewEgressController(
 	cluster *memberlist.Cluster,
 	egressInformer crdinformers.EgressInformer,
 	nodeInformer coreinformers.NodeInformer,
-	localIPDetector ipassigner.LocalIPDetector,
 ) (*EgressController, error) {
 	c := &EgressController{
 		ofClient:             ofClient,
@@ -172,10 +172,11 @@ func NewEgressController(
 		egressStates:         map[string]*egressState{},
 		egressIPStates:       map[string]*egressIPState{},
 		egressBindings:       map[string]*egressBinding{},
-		localIPDetector:      localIPDetector,
+		localIPDetector:      ipassigner.NewLocalIPDetector(),
 		idAllocator:          newIDAllocator(minEgressMark, maxEgressMark),
 		cluster:              cluster,
 	}
+
 	ipAssigner, err := ipassigner.NewIPAssigner(nodeTransportIP, egressDummyDevice)
 	if err != nil {
 		return nil, fmt.Errorf("initializing egressIP assigner failed: %v", err)
@@ -292,6 +293,7 @@ func (c *EgressController) Run(stopCh <-chan struct{}) {
 
 	go c.localIPDetector.Run(stopCh)
 
+	go c.ipAssigner.Run(stopCh)
 	if !cache.WaitForNamedCacheSync(controllerName, stopCh, c.egressListerSynced, c.localIPDetector.HasSynced) {
 		return
 	}
@@ -614,6 +616,7 @@ func (c *EgressController) syncEgress(egressName string) error {
 	if err != nil {
 		return err
 	}
+	klog.InfoS("selectNode success", "localNodeSelected", localNodeSelected)
 	if localNodeSelected {
 		// Ensure the Egress IP is assigned to the system.
 		if err := c.ipAssigner.AssignIP(egress.Spec.EgressIP); err != nil {
@@ -642,7 +645,7 @@ func (c *EgressController) syncEgress(egressName string) error {
 		eState.mark = mark
 	}
 
-	if err := c.updateEgressStatus(egress, c.localIPDetector.IsLocalIP(egress.Spec.EgressIP)); err != nil {
+	if err := c.updateEgressStatus(egress, localNodeSelected); err != nil {
 		return fmt.Errorf("update Egress %s status error: %v", egressName, err)
 	}
 

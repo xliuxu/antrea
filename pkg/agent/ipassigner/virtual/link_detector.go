@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ipassigner
+package virtual
 
-import "k8s.io/apimachinery/pkg/util/sets"
+type LinkEventHandler func(linkIndex int)
 
-// IPAssigner provides methods to assign or unassign IP.
-type IPAssigner interface {
-	// AssignIP ensures the provided IP is assigned to the system.
-	AssignIP(ip string) error
-	// UnassignIP ensures the provided IP is not assigned to the system.
-	UnassignIP(ip string) error
-	// AssignedIPs return the IPs that are assigned to the system by this IPAssigner.
-	AssignedIPs() sets.String
-	// Run starts the IP assigner.
-	Run(<-chan struct{})
+type LinkDetector interface {
+	// Run starts the detector.
+	Run(stopCh <-chan struct{})
+
+	// AddEventHandler registers an eventHandler of link update. It's not thread-safe and should be called before
+	// starting the detector.
+	AddEventHandler(handler LinkEventHandler)
 }

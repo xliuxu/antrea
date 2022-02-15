@@ -12,18 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ipassigner
+package virtual
 
-import "k8s.io/apimachinery/pkg/util/sets"
+import (
+	"k8s.io/apimachinery/pkg/util/sets"
+)
 
-// IPAssigner provides methods to assign or unassign IP.
-type IPAssigner interface {
-	// AssignIP ensures the provided IP is assigned to the system.
-	AssignIP(ip string) error
-	// UnassignIP ensures the provided IP is not assigned to the system.
-	UnassignIP(ip string) error
-	// AssignedIPs return the IPs that are assigned to the system by this IPAssigner.
-	AssignedIPs() sets.String
-	// Run starts the IP assigner.
-	Run(<-chan struct{})
+type ipAssigner struct {
+}
+
+func NewIPAssigner() (*ipAssigner, error) {
+	return nil, nil
+}
+
+func (a *ipAssigner) AssignIP(ip string) error {
+	return nil
+}
+
+func (a *ipAssigner) UnassignIP(ip string) error {
+	return nil
+}
+
+func (a *ipAssigner) AssignedIPs() sets.String {
+	return nil
+}
+
+func (a *ipAssigner) Run(stopCh <-chan struct{}) {
 }

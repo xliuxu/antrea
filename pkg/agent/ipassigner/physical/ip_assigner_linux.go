@@ -180,3 +180,8 @@ func (a *ipAssigner) AssignedIPs() sets.String {
 	// Return a copy.
 	return a.assignedIPs.Union(nil)
 }
+
+// Run starts the IP assigner.
+func (a *ipAssigner) Run(ch <-chan struct{}) {
+	<-ch
+}

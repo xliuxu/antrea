@@ -34,7 +34,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
-	"antrea.io/antrea/pkg/agent/ipassigner"
+	ipassigner "antrea.io/antrea/pkg/agent/ipassigner/physical"
 	ipassignertest "antrea.io/antrea/pkg/agent/ipassigner/testing"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
 	routetest "antrea.io/antrea/pkg/agent/route/testing"

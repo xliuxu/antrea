@@ -679,7 +679,6 @@ func TestStaleServiceExternalIPRemoval(t *testing.T) {
 			c.informerFactory.Start(stopCh)
 			c.informerFactory.WaitForCacheSync(stopCh)
 			tt.expectedCalls(c.mockIPAssigner)
-			c.removeStaleExternalIPs()
 		})
 	}
 }
