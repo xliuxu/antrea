@@ -120,10 +120,19 @@ func (pt *PortTable) getEntryByPodIPPort(ip string, port int) *NodePortData {
 	return pt.PodEndpointTable[podIPPortFormat(ip, port)]
 }
 
+// podIPPortFormat formats the ip, port to string ip:port.
+func podIPPortProtoFormat(ip string, port int, protocol string) string {
+	return fmt.Sprintf("%s:%d:%s", ip, port, protocol)
+}
+
+func (pt *PortTable) getEntryByPodIPPortProto(ip string, port int, protocol string) *NodePortData {
+	return pt.PodEndpointTable[podIPPortProtoFormat(ip, port, protocol)]
+}
+
 func (pt *PortTable) RuleExists(podIP string, podPort int, protocol string) bool {
 	pt.tableLock.RLock()
 	defer pt.tableLock.RUnlock()
-	if data := pt.getEntryByPodIPPort(podIP, podPort); data != nil {
+	if data := pt.getEntryByPodIPPortProto(podIP, podPort, protocol); data != nil {
 		return data.ProtocolInUse(protocol)
 	}
 	return false

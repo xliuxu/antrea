@@ -77,8 +77,11 @@ func configureNPLForAgent(t *testing.T, data *TestData, startPort, endPort int) 
 // NodePortLocal related test cases so they can share setup, teardown.
 func TestNodePortLocal(t *testing.T) {
 	skipIfNotIPv4Cluster(t)
+<<<<<<< HEAD
 	skipIfHasWindowsNodes(t)
 	skipIfNodePortLocalDisabled(t)
+=======
+>>>>>>> Implement NPL agent unification.
 
 	data, err := setupTest(t)
 	if err != nil {

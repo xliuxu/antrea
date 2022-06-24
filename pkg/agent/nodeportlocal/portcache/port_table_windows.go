@@ -30,15 +30,6 @@ const (
 	stateInUse protocolSocketState = 1
 )
 
-// podIPPortFormat formats the ip, port to string ip:port.
-func podIPPortProtoFormat(ip string, port int, protocol string) string {
-	return fmt.Sprintf("%s:%d:%s", ip, port, protocol)
-}
-
-func (pt *PortTable) getEntryByPodIPPortProto(ip string, port int, protocol string) *NodePortData {
-	return pt.PodEndpointTable[podIPPortProtoFormat(ip, port, protocol)]
-}
-
 func (pt *PortTable) GetEntry(ip string, port int, protocol string) *NodePortData {
 	pt.tableLock.RLock()
 	defer pt.tableLock.RUnlock()
