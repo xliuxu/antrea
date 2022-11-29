@@ -74,6 +74,16 @@ func TestIPSec(t *testing.T) {
 	t.Run("testIPSecDeleteStaleTunnelPorts", func(t *testing.T) { testIPSecDeleteStaleTunnelPorts(t, data) })
 }
 
+func (data *TestData) readOVSIPsecTunnelStatus(nodeName string) (string, error) {
+	antreaPodName, err := data.getAntreaPodOnNode(nodeName)
+	if err != nil {
+		return "", err
+	}
+	cmd := []string{"ovs-appctl -t ovs-monitor-ipsec tunnels/show"}
+	stdout, stderr, err := data.RunCommandFromPod(antreaNamespace, antreaPodName, "antrea-ipsec", cmd)
+	return fmt.Sprintf("stdout: %s\n, stderr: %s\n", stdout, stderr), err
+}
+
 func (data *TestData) readSecurityAssociationsStatus(nodeName string) (up int, connecting int, isCertAuth bool, err error) {
 	antreaPodName, err := data.getAntreaPodOnNode(nodeName)
 	if err != nil {
@@ -129,6 +139,18 @@ func testIPSecTunnelConnectivity(t *testing.T, data *TestData, certAuth bool) {
 	}
 	podInfos, deletePods := createPodsOnDifferentNodes(t, data, data.testNamespace, tag)
 	defer deletePods()
+
+	debugTunnelStatus := func(msg string) {
+		tunnelStatus, err := data.readOVSIPsecTunnelStatus(nodeName(0))
+		if err != nil {
+			t.Errorf("Failed to read IPsec tunnel status: %s. Status:%s", err, tunnelStatus)
+		} else {
+			t.Logf("%s: %s", msg, tunnelStatus)
+		}
+	}
+	debugTunnelStatus("IPsec tunnel status before ping mesh")
+	defer debugTunnelStatus("IPsec tunnel status after ping mesh")
+
 	data.runPingMesh(t, podInfos[:2], agnhostContainerName)
 
 	// We know that testPodConnectivityDifferentNodes always creates a Pod on Node 0 for the

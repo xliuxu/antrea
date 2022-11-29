@@ -75,7 +75,9 @@ func newController(t *testing.T, networkConfig *config.NetworkConfig) (*fakeCont
 	routeClient := routetest.NewMockInterface(ctrl)
 	interfaceStore := interfacestore.NewInterfaceStore()
 	ipsecCertificateManager := &fakeIPsecCertificateManager{}
-	c := NewNodeRouteController(clientset, informerFactory, ofClient, ovsClient, routeClient, interfaceStore, networkConfig, &config.NodeConfig{GatewayConfig: &config.GatewayConfig{
+	mockOVSCtlClient := ovsctltest.NewMockOVSCtlClient(ctrl)
+
+	c := NewNodeRouteController(clientset, informerFactory, ofClient, mockOVSCtlClient, ovsClient, routeClient, interfaceStore, networkConfig, &config.NodeConfig{GatewayConfig: &config.GatewayConfig{
 		IPv4: nil,
 		MAC:  gatewayMAC,
 	}}, nil, false, ipsecCertificateManager)
