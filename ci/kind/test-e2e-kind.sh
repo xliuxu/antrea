@@ -174,7 +174,7 @@ if [[ $cleanup_only == "true" ]];then
   exit 0
 fi
 
-trap "quit" INT EXIT
+# trap "quit" INT EXIT
 
 manifest_args="$manifest_args --verbose-log"
 if [ -n "$feature_gates" ]; then
@@ -306,7 +306,7 @@ function run_test {
   if [ -n "$run" ]; then
     RUN_OPT="-run $run"
   fi
-  go test -v -timeout=$timeout $RUN_OPT antrea.io/antrea/test/e2e $flow_visibility_args -provider=kind --logs-export-dir=$ANTREA_LOG_DIR --skip-cases=$skiplist $coverage_args
+  echo "go test -v -timeout=$timeout $RUN_OPT antrea.io/antrea/test/e2e $flow_visibility_args -provider=kind --logs-export-dir=$ANTREA_LOG_DIR --skip-cases=$skiplist $coverage_args"
 }
 
 if [[ "$mode" == "" ]] || [[ "$mode" == "encap" ]]; then
