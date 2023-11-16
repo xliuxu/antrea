@@ -15,11 +15,15 @@
 package e2e
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // setupLogging creates a temporary directory to export the test logs if necessary. If a directory
@@ -129,6 +133,20 @@ func testMain(m *testing.M) int {
 		log.Printf("Service IPv6 network: '%s'", clusterInfo.svcV6NetworkCIDR)
 	}
 	log.Printf("Num nodes: %d", clusterInfo.numNodes)
+	if testOptions.enableCoverage {
+		var gracePeriodSeconds int64 = 30
+		deleteOptions := metav1.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds,
+		}
+		listOptions := metav1.ListOptions{
+			LabelSelector: "app=antrea",
+		}
+		if err := testData.clientset.CoreV1().Pods(antreaNamespace).DeleteCollection(context.TODO(), deleteOptions, listOptions); err != nil {
+			log.Fatalf("Error when deleting antrea Pods: %v", err)
+		}
+		log.Printf("Antrea Pods deleted")
+		time.Sleep(30 * time.Second)
+	}
 	err = ensureAntreaRunning(testData)
 	if err != nil {
 		log.Fatalf("Error when deploying Antrea: %v", err)
