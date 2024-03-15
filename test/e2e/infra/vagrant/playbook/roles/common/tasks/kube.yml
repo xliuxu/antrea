@@ -1,15 +1,26 @@
+- name: Fetch latest stable Kubernetes release
+  get_url:
+    url: https://dl.k8s.io/release/stable.txt
+    dest: /tmp/k8s_version
+
+- name: Extract major and minor version from k8s_version
+  shell: cat /tmp/k8s_version | cut -d. -f1,2
+  register: k8s_version
+  changed_when: False
+
 - name: Add an apt signing key for Kubernetes
   apt_key:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    url: https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key
+    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     state: present
 
 - name: Adding apt repository for Kubernetes
   apt_repository:
     # kubernetes-xenial should work for Ubuntu 16.04+, there is no
     # kubernetes-bionic
-    repo: deb https://packages.cloud.google.com/apt/ kubernetes-xenial main
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /
     state: present
-    filename: kubernetes.list
+    filename: kubernetes
 
 - name: Install Kubernetes binaries
   apt:
